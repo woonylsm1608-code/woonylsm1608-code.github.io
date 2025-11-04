@@ -1,13 +1,58 @@
-<!-- index.html -->
-
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>웹 호스팅</title>
+  <meta charset="UTF-8">
+  <title>간단한 채팅</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 50px auto; }
+    #chat-box { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: auto; }
+    #input-area { margin-top: 10px; display: flex; }
+    #message { flex: 1; padding: 8px; }
+    button { padding: 8px 12px; margin-left: 5px; }
+  </style>
 </head>
 <body>
-    git pages 입니다.
+  <h2>간단한 채팅</h2>
+  <div id="chat-box"></div>
+
+  <div id="input-area">
+    <input id="message" type="text" placeholder="메시지를 입력하세요">
+    <button id="send">보내기</button>
+  </div>
+
+  <script>
+    const API_BASE = "http://localhost:3000"; // 실제 서버 주소로 교체
+    const chatBox = document.getElementById("chat-box");
+    const input = document.getElementById("message");
+
+    document.getElementById("send").onclick = async () => {
+      const text = input.value.trim();
+      if (!text) return;
+
+      // 사용자 메시지 출력
+      appendMessage("나", text);
+      input.value = "";
+
+      // 서버로 메시지 전송
+      try {
+        const res = await fetch(`${API_BASE}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, user: "user" })
+        });
+        const data = await res.json();
+        appendMessage("AI", data.reply);
+      } catch (e) {
+        appendMessage("시스템", "서버 연결 실패");
+      }
+    };
+
+    function appendMessage(sender, text) {
+      const div = document.createElement("div");
+      div.textContent = `${sender}: ${text}`;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+  </script>
 </body>
 </html>
