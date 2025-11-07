@@ -1,58 +1,96 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>간단한 채팅</title>
-  <style>
-    body { font-family: sans-serif; max-width: 600px; margin: 50px auto; }
-    #chat-box { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: auto; }
-    #input-area { margin-top: 10px; display: flex; }
-    #message { flex: 1; padding: 8px; }
-    button { padding: 8px 12px; margin-left: 5px; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>woonylsm — 로그인</title>
+<style>
+  :root{--bg:#0f1724;--card:#0b1220;--accent:#3b82f6;--muted:#9aa6bf}
+  body{margin:0;font-family:system-ui,Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#071024, #0f1724);color:#e6eef8;display:flex;align-items:center;justify-content:center;height:100vh}
+  .card{width:360px;padding:28px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);box-shadow:0 8px 30px rgba(2,6,23,0.7)}
+  h1{margin:0 0 14px;font-size:20px}
+  label{display:block;font-size:13px;margin-top:10px;color:var(--muted)}
+  input{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+  .row{display:flex;gap:8px;margin-top:14px}
+  button{flex:1;padding:10px;border-radius:8px;border:0;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+  .ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+  .note{font-size:12px;color:var(--muted);margin-top:12px}
+  .oauth{display:flex;align-items:center;gap:8px;margin-top:14px}
+  a.oauth-btn{flex:1;padding:10px;text-align:center;border-radius:8px;border:1px solid rgba(255,255,255,0.06);text-decoration:none;color:inherit;background:transparent}
+</style>
 </head>
 <body>
-  <h2>간단한 채팅</h2>
-  <div id="chat-box"></div>
+  <div class="card" role="main" aria-labelledby="title">
+    <h1 id="title">woonylsm — 로그인</h1>
 
-  <div id="input-area">
-    <input id="message" type="text" placeholder="메시지를 입력하세요">
-    <button id="send">보내기</button>
+    <label for="user">아이디</label>
+    <input id="user" autocomplete="username" placeholder="demo" />
+
+    <label for="pass">비밀번호</label>
+    <input id="pass" type="password" autocomplete="current-password" placeholder="demo123" />
+
+    <div class="row">
+      <button id="login">로그인 (데모)</button>
+      <button id="logout" class="ghost" style="display:none">로그아웃</button>
+    </div>
+
+    <div class="note" id="msg"></div>
+
+    <div class="oauth">
+      <!-- 아래 CLIENT_ID와 redirect_uri를 실제 값으로 바꿔서 OAuth 흐름 사용 -->
+      <a id="github-oauth" class="oauth-btn" href="#" role="button">GitHub로 로그인</a>
+    </div>
+
+    <div class="note">데모 계정: 아이디 <code>demo</code> / 비밀번호 <code>demo123</code>. 실제 서비스에선 사용 금지.</div>
   </div>
 
-  <script>
-    const API_BASE = "http://localhost:3000"; // 실제 서버 주소로 교체
-    const chatBox = document.getElementById("chat-box");
-    const input = document.getElementById("message");
+<script>
+const demoUser = {user:'demo', pass:'demo123'};
+const loginBtn = document.getElementById('login');
+const logoutBtn = document.getElementById('logout');
+const msg = document.getElementById('msg');
 
-    document.getElementById("send").onclick = async () => {
-      const text = input.value.trim();
-      if (!text) return;
+function setAuth(userObj){
+  localStorage.setItem('woonyl_auth', JSON.stringify(userObj));
+  msg.textContent = '로그인되었습니다: ' + (userObj.login || userObj.user);
+  loginBtn.style.display = 'none';
+  logoutBtn.style.display = 'inline-block';
+}
 
-      // 사용자 메시지 출력
-      appendMessage("나", text);
-      input.value = "";
+function clearAuth(){
+  localStorage.removeItem('woonyl_auth');
+  msg.textContent = '';
+  loginBtn.style.display = 'inline-block';
+  logoutBtn.style.display = 'none';
+}
 
-      // 서버로 메시지 전송
-      try {
-        const res = await fetch(`${API_BASE}/api/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text, user: "user" })
-        });
-        const data = await res.json();
-        appendMessage("AI", data.reply);
-      } catch (e) {
-        appendMessage("시스템", "서버 연결 실패");
-      }
-    };
+const saved = localStorage.getItem('woonyl_auth');
+if(saved) {
+  setAuth(JSON.parse(saved));
+}
 
-    function appendMessage(sender, text) {
-      const div = document.createElement("div");
-      div.textContent = `${sender}: ${text}`;
-      chatBox.appendChild(div);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-  </script>
+loginBtn.addEventListener('click', ()=>{
+  const u = document.getElementById('user').value.trim();
+  const p = document.getElementById('pass').value;
+  if(u === demoUser.user && p === demoUser.pass){
+    setAuth({user:u});
+    // 실제 페이지로 리다이렉트하려면 여기서 location.href = '/app.html' 등
+  } else {
+    msg.textContent = '아이디 또는 비밀번호가 틀렸습니다.';
+  }
+});
+
+logoutBtn.addEventListener('click', ()=>{ clearAuth(); });
+
+/* --- GitHub OAuth 버튼(클라이언트 측 리다이렉트만) ---
+   주의: CLIENT_ID는 깃허브 OAuth 앱에서 발급받아 아래에 넣고,
+   redirect_uri는 callback.html로 설정.
+   토큰 교환(exchange)은 반드시 서버에서 수행해야 함.
+*/
+const CLIENT_ID = 'YOUR_GITHUB_OAUTH_CLIENT_ID'; // 변경
+const REDIRECT = 'https://woonylsm-code.github.io/callback.html'; // 변경 불필요한 경우 맞춰서 수정
+document.getElementById('github-oauth').href =
+  `https://github.com/login/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT)}&scope=read:user%20user:email`;
+</script>
 </body>
 </html>
