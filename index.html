@@ -1,94 +1,29 @@
-<!doctype html>
-<html lang="ko">
+<!DOCTYPE html>
+<html>
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>woonylsm — 로그인</title>
-<style>
-  :root{--bg:#0f1724;--card:#0b1220;--accent:#3b82f6;--muted:#9aa6bf}
-  body{margin:0;font-family:system-ui,Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#071024,#0f1724);color:#e6eef8;display:flex;align-items:center;justify-content:center;height:100vh}
-  .card{width:380px;padding:28px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);box-shadow:0 8px 30px rgba(2,6,23,0.7)}
-  h1{margin:0 0 14px;font-size:20px}
-  label{display:block;font-size:13px;margin-top:10px;color:var(--muted)}
-  input{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
-  .row{display:flex;gap:8px;margin-top:14px}
-  button{flex:1;padding:10px;border-radius:8px;border:0;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
-  .ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
-  .note{font-size:12px;color:var(--muted);margin-top:12px}
-  a.link{color:inherit;text-decoration:underline;cursor:pointer}
-</style>
+  <meta charset="utf-8">
+  <title>AI Q&A</title>
 </head>
 <body>
-  <div class="card" role="main" aria-labelledby="title">
-    <h1 id="title">woonylsm — 로그인</h1>
+  <h1>Gemini Q&A</h1>
+  <input id="question" placeholder="질문 입력" style="width:300px;">
+  <button onclick="send()">Send</button>
 
-    <label for="email">이메일</label>
-    <input id="email" autocomplete="username" placeholder="you@example.com" />
+  <pre id="answer"></pre>
 
-    <label for="pass">비밀번호</label>
-    <input id="pass" type="password" autocomplete="current-password" placeholder="비밀번호" />
-
-    <div class="row">
-      <button id="login">로그인</button>
-      <button id="logout" class="ghost" style="display:none">로그아웃</button>
-    </div>
-
-    <div class="note" id="msg"></div>
-
-    <div style="margin-top:12px;display:flex;gap:8px">
-      <a class="link" href="signup.html">회원가입</a>
-      <a class="link" href="admin.html">관리자 페이지</a>
-    </div>
-
-    <div class="note" style="margin-top:12px">참고: 이 시스템은 클라이언트 측 로컬 저장소(localStorage)를 사용한 데모입니다. 실제 서비스에선 서버와 데이터베이스, 해싱, HTTPS가 필요합니다.</div>
-  </div>
-
-<script src="app.js"></script>
 <script>
-// Initialize UI state
-const emailInput = document.getElementById('email');
-const passInput = document.getElementById('pass');
-const loginBtn = document.getElementById('login');
-const logoutBtn = document.getElementById('logout');
-const msg = document.getElementById('msg');
+async function send() {
+  const q = document.getElementById("question").value;
 
-function showMsg(text){ msg.textContent = text; }
+  const res = await fetch("https://YOUR-SERVER-URL/ask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question: q })
+  });
 
-function refreshAuthState(){
-  const cur = localStorage.getItem('woonyl_currentUser');
-  if(cur){
-    const u = JSON.parse(cur);
-    showMsg('로그인: ' + u.email + (u.role === 'admin' ? ' (관리자)' : ''));
-    loginBtn.style.display = 'none';
-    logoutBtn.style.display = 'inline-block';
-  } else {
-    showMsg('');
-    loginBtn.style.display = 'inline-block';
-    logoutBtn.style.display = 'none';
-  }
+  const data = await res.json();
+  document.getElementById("answer").textContent = data.answer;
 }
-refreshAuthState();
-
-loginBtn.addEventListener('click', ()=>{
-  const email = emailInput.value.trim();
-  const pass = passInput.value;
-  if(!email || !pass){ showMsg('이메일과 비밀번호를 입력하세요.'); return; }
-  const res = app_auth_login(email, pass);
-  if(res.success){
-    showMsg('로그인 성공: ' + res.user.email + (res.user.role === 'admin' ? ' (관리자)' : ''));
-    refreshAuthState();
-    // Redirect to a protected app page if needed
-    // location.href = 'app.html';
-  } else {
-    showMsg('로그인 실패: ' + res.message);
-  }
-});
-
-logoutBtn.addEventListener('click', ()=>{
-  app_auth_logout();
-  showMsg('로그아웃됨');
-  refreshAuthState();
-});
 </script>
 </body>
 </html>
