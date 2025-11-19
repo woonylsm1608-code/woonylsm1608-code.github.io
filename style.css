@@ -1,0 +1,38 @@
+body {
+    text-align: center;
+    font-family: Arial;
+    background: #f3f3f3;
+}
+
+#board {
+    display: grid;
+    grid-template-columns: repeat(5, 80px);
+    grid-gap: 5px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.cell {
+    width: 80px;
+    height: 80px;
+    font-size: 40px;
+    background: white;
+    border: 2px solid #333;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+}
+
+.cell:hover {
+    background: #e2e2e2;
+}
+
+#level-box {
+    margin: 10px 0;
+}
+
+#status {
+    margin-top: 20px;
+    font-size: 22px;
+}

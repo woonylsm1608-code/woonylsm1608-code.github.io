@@ -1,29 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <title>AI Q&A</title>
+    <meta charset="UTF-8">
+    <title>5x5 Tic-Tac-Toe</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Gemini Q&A</h1>
-  <input id="question" placeholder="질문 입력" style="width:300px;">
-  <button onclick="send()">Send</button>
 
-  <pre id="answer"></pre>
+<h1>5×5 Tic-Tac-Toe</h1>
+<h3>4개 연속이면 승리</h3>
 
-<script>
-async function send() {
-  const q = document.getElementById("question").value;
+<div id="level-box">
+    <label>AI Level (검색 깊이): </label>
+    <input type="number" id="level" value="4" min="1" max="10">
+    <button onclick="restartGame()">게임 다시 시작</button>
+</div>
 
-  const res = await fetch("https://YOUR-SERVER-URL/ask", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question: q })
-  });
+<div id="board"></div>
 
-  const data = await res.json();
-  document.getElementById("answer").textContent = data.answer;
-}
-</script>
+<p id="status"></p>
+
+<script src="script.js"></script>
 </body>
 </html>
