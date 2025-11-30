@@ -1,25 +1,1263 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>5x5 Tic-Tac-Toe</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <title>Mini Bit Adventure 3D</title>
+  <style>
+    body {
+      background: #111;
+      color: #eee;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 20px;
+      padding: 20px;
+    }
+
+    #game {
+      border: 2px solid #555;
+      image-rendering: pixelated;
+      background: #000;
+      cursor: crosshair;
+    }
+
+    #ui {
+      max-width: 360px;
+      font-size: 14px;
+    }
+
+    #stats {
+      margin-bottom: 8px;
+      white-space: pre-line;
+    }
+
+    #log {
+      height: 260px;
+      overflow-y: auto;
+      border: 1px solid #444;
+      padding: 6px;
+      background: #181818;
+      font-size: 12px;
+    }
+
+    h1 {
+      font-size: 18px;
+      margin: 0 0 8px 0;
+    }
+
+    .muted {
+      color: #aaa;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    #class-ui,
+    #action-ui {
+      margin-bottom: 8px;
+      border: 1px solid #444;
+      padding: 6px;
+      background: #181818;
+    }
+
+    #classSelect,
+    #startBtn,
+    #skillBtn,
+    #magicBtn,
+    #questBtn,
+    #skillTreeBtn {
+      margin-top: 4px;
+      font-size: 13px;
+    }
+
+    #skillBtn,
+    #magicBtn,
+    #questBtn,
+    #skillTreeBtn {
+      margin-right: 4px;
+    }
+  </style>
 </head>
 <body>
+  <!-- 더 큰 게임 화면, 왼쪽에 배치 -->
+  <canvas id="game" width="640" height="360"></canvas>
 
-<h1>5×5 Tic-Tac-Toe</h1>
-<h3>4개 연속이면 승리</h3>
+  <div id="ui">
+    <h1>Mini Bit Adventure 3D</h1>
 
-<div id="level-box">
-    <label>AI Level (검색 깊이): </label>
-    <input type="number" id="level" value="4" min="1" max="10">
-    <button onclick="restartGame()">게임 다시 시작</button>
-</div>
+    <div id="class-ui">
+      <strong>직업 선택</strong><br />
+      <select id="classSelect">
+        <option value="warrior">전사 (HP↑, 방어↑)</option>
+        <option value="mage">마법사 (공격↑, MP↑)</option>
+        <option value="rogue">도적 (치명타↑)</option>
+      </select>
+      <button id="startBtn">게임 시작</button>
+      <div class="muted">
+        시작 전까지는 이동이 되지 않습니다.
+      </div>
+    </div>
 
-<div id="board"></div>
+    <div id="action-ui">
+      <strong>액션</strong><br />
+      <button id="skillBtn">스킬</button>
+      <button id="magicBtn">마법</button>
+      <button id="questBtn">퀘스트</button>
+      <button id="skillTreeBtn">스킬 트리</button>
+      <div class="muted">
+        스킬/마법은 1턴을 소비합니다. (쿨타임 / 마나 확인)<br />
+        캔버스를 클릭하면 마우스로 시점 회전 가능.
+      </div>
+    </div>
 
-<p id="status"></p>
+    <div id="stats"></div>
+    <div class="muted">
+      이동: W/S(전진/후진, 길게 누르면 계속 이동), A/D(좌우 회전), Space(점프)<br />
+      상점 열기: B 키, 포션 사용: Q 키<br />
+      위쪽 끝(윗줄 바로 아래에서 위로 이동)으로 나가면 다음 층으로 올라갑니다.
+    </div>
+    <div id="log"></div>
+  </div>
 
-<script src="script.js"></script>
+  <script>
+    // ===== 기본 설정 =====
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const statsEl = document.getElementById("stats");
+    const logEl = document.getElementById("log");
+    const classSelectEl = document.getElementById("classSelect");
+    const startBtnEl = document.getElementById("startBtn");
+    const skillBtnEl = document.getElementById("skillBtn");
+    const magicBtnEl = document.getElementById("magicBtn");
+    const questBtnEl = document.getElementById("questBtn");
+    const skillTreeBtnEl = document.getElementById("skillTreeBtn");
+
+    const TILE = {
+      FLOOR: 0,
+      WALL: 1,
+    };
+
+    const MAP_SIZE = 32; // 넓은 평지
+    const map = [];
+
+    // 3D 렌더링 관련
+    const FOV = Math.PI / 3; // 60도
+    const MAX_DEPTH = 20;
+    let depthBuffer = [];
+
+    // 플레이어
+    const player = {
+      x: 1,     // 타일 좌표 (정수)
+      y: 1,
+      angle: 0, // 라디안, 0 = 동쪽
+      hp: 20,
+      maxHp: 20,
+      baseAttack: 5,
+      baseDefense: 1,
+      attack: 5,
+      defense: 1,
+      xp: 0,
+      level: 1,
+      xpToNext: 10,
+      gold: 0,
+      potions: 0,
+      weaponAttack: 0,
+      armorDefense: 0,
+      weaponName: null,
+      armorName: null,
+      classType: "none",
+      critChance: 0,
+      mp: 10,
+      maxMp: 10,
+      z: 0,           // 점프 높이
+      vz: 0,          // 점프 속도
+      jumping: false,
+      skillPoints: 0,
+      magicBonus: 0,  // 마법 추가 피해
+    };
+
+    const JUMP_VEL = 0.12;
+    const GRAVITY = 0.008;
+
+    let enemies = [];
+    let gameOver = false;
+    let gameStarted = false;
+    let floor = 1;
+
+    // 스킬/마법 쿨타임
+    let skillCooldown = 0;
+    let magicCooldown = 0;
+
+    // 퀘스트
+    let quests = [];
+
+    // 상점
+    const SHOP_ITEMS = [
+      { id: "wood_sword", name: "나무 검 (+2 공격)", type: "weapon", attack: 2, price: 10 },
+      { id: "iron_sword", name: "철 검 (+4 공격)", type: "weapon", attack: 4, price: 25 },
+      { id: "robe", name: "마법 로브 (+2 방어)", type: "armor", defense: 2, price: 15 },
+      { id: "leather_armor", name: "가죽 갑옷 (+3 방어)", type: "armor", defense: 3, price: 20 },
+      { id: "potion", name: "체력 포션 (+10 HP 회복)", type: "potion", heal: 10, price: 8 },
+    ];
+
+    // 이동 키 상태 (길게 누르면 반복)
+    const keyState = {
+      w: false,
+      s: false,
+    };
+    let moveTimerW = 0;
+    let moveTimerS = 0;
+    let stepInterval = 150; // ms마다 한 칸 이동 (스킬 트리로 줄어들 수 있음)
+
+    // 마우스 시점 회전
+    let pointerLocked = false;
+    const MOUSE_SENSITIVITY = 0.003;
+
+    // ===== 유틸 =====
+    function randInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function addLog(msg) {
+      const p = document.createElement("div");
+      p.textContent = msg;
+      logEl.appendChild(p);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function distance(a, b) {
+      return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    }
+
+    function updateDerivedStats() {
+      player.attack = player.baseAttack + player.weaponAttack;
+      player.defense = player.baseDefense + player.armorDefense;
+    }
+
+    function tickCooldowns() {
+      if (skillCooldown > 0) skillCooldown--;
+      if (magicCooldown > 0) magicCooldown--;
+    }
+
+    function normalizeAngle(a) {
+      while (a < 0) a += Math.PI * 2;
+      while (a >= Math.PI * 2) a -= Math.PI * 2;
+      return a;
+    }
+
+    function smallestAngleDiff(a, b) {
+      let diff = a - b;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      return diff;
+    }
+
+    function getAngle() {
+      return player.angle;
+    }
+
+    // ===== 직업 =====
+    function applyClass(type) {
+      player.classType = type;
+      if (type === "warrior") {
+        player.maxHp = 28;
+        player.hp = 28;
+        player.baseAttack = 6;
+        player.baseDefense = 2;
+        player.critChance = 0.05;
+        player.maxMp = 8;
+        player.mp = 8;
+      } else if (type === "mage") {
+        player.maxHp = 18;
+        player.hp = 18;
+        player.baseAttack = 8;
+        player.baseDefense = 0;
+        player.critChance = 0.05;
+        player.maxMp = 16;
+        player.mp = 16;
+      } else if (type === "rogue") {
+        player.maxHp = 20;
+        player.hp = 20;
+        player.baseAttack = 5;
+        player.baseDefense = 1;
+        player.critChance = 0.25;
+        player.maxMp = 10;
+        player.mp = 10;
+      }
+      updateDerivedStats();
+      addLog(
+        "직업: " +
+          (type === "warrior" ? "전사" : type === "mage" ? "마법사" : "도적")
+      );
+    }
+
+    // ===== 맵 생성 (내부는 모두 바닥, 테두리만 벽) =====
+    function generateMap() {
+      for (let y = 0; y < MAP_SIZE; y++) {
+        map[y] = [];
+        for (let x = 0; x < MAP_SIZE; x++) {
+          if (
+            x === 0 ||
+            y === 0 ||
+            x === MAP_SIZE - 1 ||
+            y === MAP_SIZE - 1
+          ) {
+            map[y][x] = TILE.WALL;
+          } else {
+            map[y][x] = TILE.FLOOR;
+          }
+        }
+      }
+      map[player.y][player.x] = TILE.FLOOR;
+    }
+
+    function isWallTile(tx, ty) {
+      if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) return true;
+      return map[ty][tx] === TILE.WALL;
+    }
+
+    function isWalkableTile(tx, ty) {
+      if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) return false;
+      return map[ty][tx] !== TILE.WALL;
+    }
+
+    function isWallAt(x, y) {
+      const tx = Math.floor(x);
+      const ty = Math.floor(y);
+      return isWallTile(tx, ty);
+    }
+
+    // ===== 몬스터 =====
+    function spawnEnemies(count) {
+      enemies = [];
+      let tries = 0;
+      while (enemies.length < count && tries < 2000) {
+        tries++;
+        const x = randInt(1, MAP_SIZE - 2);
+        const y = randInt(1, MAP_SIZE - 2);
+        if (isWallTile(x, y)) continue;
+        if (x === player.x && y === player.y) continue;
+        if (enemies.some((e) => e.x === x && e.y === y)) continue;
+
+        const baseHp = randInt(4, 8) + Math.floor(floor * 0.5);
+        enemies.push({
+          x,
+          y,
+          hp: baseHp,
+          maxHp: baseHp,
+          attack: randInt(2, 4) + Math.floor(floor * 0.3),
+          defense: Math.floor(floor * 0.1),
+          xpReward: randInt(3, 6) + Math.floor(floor * 0.5),
+          goldReward: randInt(2, 5) + Math.floor(floor * 0.7),
+        });
+      }
+    }
+
+    function findEnemyAt(tx, ty) {
+      return enemies.find((e) => e.x === tx && e.y === ty);
+    }
+
+    // ===== 퀘스트 =====
+    function initQuests() {
+      quests = [
+        {
+          id: 1,
+          name: "몬스터 5마리 처치",
+          type: "kill",
+          goal: 5,
+          progress: 0,
+          rewardGold: 20,
+          rewardXp: 5,
+          completed: false,
+          claimed: false,
+        },
+        {
+          id: 2,
+          name: "3층 도달",
+          type: "floor",
+          goal: 3,
+          progress: 1,
+          rewardGold: 30,
+          rewardXp: 8,
+          completed: false,
+          claimed: false,
+        },
+      ];
+    }
+
+    function onEnemyKilled() {
+      quests.forEach((q) => {
+        if (q.type === "kill" && !q.completed) {
+          q.progress++;
+          if (q.progress >= q.goal) {
+            q.completed = true;
+            addLog(`퀘스트 완료: ${q.name}`);
+          }
+        }
+      });
+    }
+
+    function updateFloorQuestProgress() {
+      quests.forEach((q) => {
+        if (q.type === "floor" && !q.completed) {
+          if (floor > q.progress) q.progress = floor;
+          if (q.progress >= q.goal) {
+            q.completed = true;
+            addLog(`퀘스트 완료: ${q.name}`);
+          }
+        }
+      });
+    }
+
+    function openQuestWindow() {
+      if (!gameStarted || gameOver) return;
+      let text = `=== 퀘스트 (현재 층: ${floor}) ===\n\n`;
+      quests.forEach((q, i) => {
+        const status = q.completed
+          ? q.claimed
+            ? "완료(보상 수령)"
+            : "완료(보상 미수령)"
+          : "진행 중";
+        const prog =
+          q.type === "kill"
+            ? `${q.progress}/${q.goal}`
+            : `${Math.min(floor, q.goal)}/${q.goal}`;
+        text += `${i + 1}) ${q.name}\n`;
+        text += `   상태: ${status}\n`;
+        text += `   진행: ${prog}\n`;
+        text += `   보상: ${q.rewardGold} 골드, ${q.rewardXp} XP\n\n`;
+      });
+      text += "보상을 받을 완료된 퀘스트 번호를 입력(취소: 빈 칸):";
+      const input = prompt(text);
+      if (!input) return;
+      const idx = parseInt(input, 10) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= quests.length) return;
+      const q = quests[idx];
+      if (!q.completed || q.claimed) {
+        addLog("해당 퀘스트는 완료되지 않았거나 이미 보상을 받았습니다.");
+        return;
+      }
+      q.claimed = true;
+      gainGold(player, q.rewardGold);
+      gainXp(player, q.rewardXp);
+      addLog(`퀘스트 보상을 받았습니다: ${q.name}`);
+    }
+
+    // ===== 전투 & 성장 =====
+    function gainGold(p, amount) {
+      p.gold += amount;
+      addLog(`골드 ${amount} 획득 (현재 골드: ${p.gold})`);
+    }
+
+    function gainXp(p, amount) {
+      p.xp += amount;
+      addLog(`경험치 ${amount} 획득 (XP: ${p.xp}/${p.xpToNext})`);
+      if (p.xp >= p.xpToNext) {
+        p.xp -= p.xpToNext;
+        levelUp(p);
+      }
+    }
+
+    function levelUp(p) {
+      p.level++;
+      p.maxHp += 5;
+      p.baseAttack++;
+      p.baseDefense++;
+      p.maxMp += 2;
+      p.hp = p.maxHp;
+      p.mp = p.maxMp;
+      p.xpToNext = Math.floor(p.xpToNext * 1.5);
+      p.skillPoints += 1; // 레벨당 스킬 포인트 1
+      updateDerivedStats();
+      addLog(
+        `레벨 업! 현재 레벨: ${p.level} (공격/방어/HP/MP 증가, 스킬 포인트 +1)`
+      );
+    }
+
+    function attack(attacker, defender, isPlayerAttacking) {
+      let base = attacker.attack - defender.defense;
+      const variance = randInt(-1, 1);
+      let dmg = Math.max(1, base + variance);
+      let crit = false;
+      if (attacker === player && player.classType === "rogue") {
+        if (Math.random() < player.critChance) {
+          dmg *= 2;
+          crit = true;
+        }
+      }
+      defender.hp -= dmg;
+      if (isPlayerAttacking) {
+        addLog(
+          `당신이 몬스터를 공격하여 ${dmg} 피해를 입혔습니다.` +
+            (crit ? " (치명타!)" : "")
+        );
+      } else {
+        addLog(`몬스터가 당신을 공격하여 ${dmg} 피해를 입혔습니다.`);
+      }
+
+      if (defender.hp <= 0) {
+        if (isPlayerAttacking) {
+          addLog("몬스터를 처치했습니다!");
+          gainXp(player, defender.xpReward);
+          gainGold(player, defender.goldReward);
+          onEnemyKilled();
+          enemies = enemies.filter((e) => e !== defender);
+        } else {
+          player.hp = 0;
+          endGame(false);
+        }
+      }
+    }
+
+    // ===== 적 AI =====
+    function enemiesAct() {
+      for (const e of enemies) {
+        if (e.hp <= 0) continue;
+        if (distance(e, player) === 1) {
+          attack(e, player, false);
+          if (gameOver) return;
+          continue;
+        }
+        let bestDx = 0;
+        let bestDy = 0;
+        if (player.x > e.x) bestDx = 1;
+        else if (player.x < e.x) bestDx = -1;
+        if (player.y > e.y) bestDy = 1;
+        else if (player.y < e.y) bestDy = -1;
+        const tryMoves = [
+          { dx: bestDx, dy: 0 },
+          { dx: 0, dy: bestDy },
+          { dx: bestDx, dy: bestDy },
+        ];
+        for (const mv of tryMoves) {
+          const nx = e.x + mv.dx;
+          const ny = e.y + mv.dy;
+          if (!isWalkableTile(nx, ny)) continue;
+          if (enemies.some((o) => o !== e && o.x === nx && o.y === ny)) continue;
+          if (nx === player.x && ny === player.y) {
+            attack(e, player, false);
+            if (gameOver) return;
+          } else {
+            e.x = nx;
+            e.y = ny;
+          }
+          break;
+        }
+      }
+    }
+
+    function playerActionDone() {
+      enemiesAct();
+      if (!gameOver && enemies.length === 0) {
+        addLog("이 층의 몬스터를 모두 처치했습니다. 적이 더 나타납니다.");
+        spawnEnemies(6 + Math.floor(floor / 2));
+      }
+      tickCooldowns();
+      checkPlayerAlive();
+    }
+
+    function checkPlayerAlive() {
+      if (player.hp <= 0 && !gameOver) {
+        endGame(false);
+      }
+    }
+
+    function endGame(win) {
+      gameOver = true;
+      if (win) addLog("축하합니다! 이 던전을 정복했습니다!");
+      else addLog("당신은 쓰러졌습니다... 게임 오버.");
+      addLog("F5를 눌러 새 게임을 시작하세요.");
+    }
+
+    // ===== 상점 / 포션 =====
+    function openShop() {
+      if (!gameStarted || gameOver) return;
+      let menu = `=== 상점 (현재 골드: ${player.gold}) ===\n`;
+      SHOP_ITEMS.forEach((item, idx) => {
+        menu += `${idx + 1}) ${item.name} - ${item.price} 골드\n`;
+      });
+      menu += "구입할 번호를 입력(취소: 빈 칸):";
+      const input = prompt(menu);
+      if (!input) return;
+      const idx = parseInt(input, 10) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= SHOP_ITEMS.length) return;
+      const item = SHOP_ITEMS[idx];
+      if (player.gold < item.price) {
+        addLog("골드가 부족합니다.");
+        return;
+      }
+      player.gold -= item.price;
+      if (item.type === "weapon") {
+        player.weaponAttack = item.attack;
+        player.weaponName = item.name;
+        updateDerivedStats();
+        addLog(`${item.name} 장비 (공격력 증가)`);
+      } else if (item.type === "armor") {
+        player.armorDefense = item.defense;
+        player.armorName = item.name;
+        updateDerivedStats();
+        addLog(`${item.name} 장비 (방어력 증가)`);
+      } else if (item.type === "potion") {
+        player.potions++;
+        addLog(`체력 포션 구입 (보유 포션: ${player.potions})`);
+      }
+    }
+
+    function usePotion() {
+      if (!gameStarted || gameOver) return;
+      if (player.potions <= 0) {
+        addLog("포션이 없습니다.");
+        return;
+      }
+      if (player.hp >= player.maxHp) {
+        addLog("이미 HP가 가득 찼습니다.");
+        return;
+      }
+      player.potions--;
+      const heal = 10;
+      player.hp = Math.min(player.maxHp, player.hp + heal);
+      addLog(`포션 사용: ${heal} HP 회복 (남은 포션: ${player.potions})`);
+    }
+
+    // ===== 스킬 / 마법 =====
+    function useSkill() {
+      if (!gameStarted || gameOver) return;
+      if (skillCooldown > 0) {
+        addLog(`스킬 쿨타임: ${skillCooldown}턴 남음`);
+        return;
+      }
+      const adjEnemy = enemies.find((e) => distance(e, player) === 1);
+      if (!adjEnemy) {
+        addLog("근처에 스킬로 공격할 몬스터가 없습니다.");
+        return;
+      }
+      addLog("스킬: 강타 사용!");
+      const originalAttack = player.attack;
+      player.attack = player.attack + 4;
+      attack(player, adjEnemy, true);
+      player.attack = originalAttack;
+      skillCooldown = 3;
+      playerActionDone();
+    }
+
+    function useMagic() {
+      if (!gameStarted || gameOver) return;
+      if (magicCooldown > 0) {
+        addLog(`마법 쿨타임: ${magicCooldown}턴 남음`);
+        return;
+      }
+      if (player.mp < 4) {
+        addLog("마나가 부족합니다. (필요 MP: 4)");
+        return;
+      }
+      if (enemies.length === 0) {
+        addLog("공격할 몬스터가 없습니다.");
+        return;
+      }
+      let best = null;
+      for (const e of enemies) {
+        const d = distance(e, player);
+        if (!best || d < best.d) best = { enemy: e, d };
+      }
+      const target = best.enemy;
+      addLog("마법: 파이어볼 사용!");
+      player.mp -= 4;
+      const originalAttack = player.attack;
+      player.attack = player.attack + 3 + player.magicBonus;
+      attack(player, target, true);
+      player.attack = originalAttack;
+      magicCooldown = 4;
+      playerActionDone();
+    }
+
+    // ===== 스킬 트리 =====
+    function openSkillTree() {
+      if (!gameStarted || gameOver) return;
+      if (player.skillPoints <= 0) {
+        addLog("사용 가능한 스킬 포인트가 없습니다.");
+        return;
+      }
+
+      let text = `=== 스킬 트리 (남은 포인트: ${player.skillPoints}) ===\n`;
+      if (player.classType === "warrior") {
+        text += "1) 공격력 +1\n";
+        text += "2) 최대 HP +5\n";
+        text += "3) 방어력 +1\n";
+      } else if (player.classType === "mage") {
+        text += "1) 공격력 +1\n";
+        text += "2) 최대 MP +3\n";
+        text += "3) 마법 추가 피해 +1\n";
+      } else if (player.classType === "rogue") {
+        text += "1) 공격력 +1\n";
+        text += "2) 치명타 확률 +5%\n";
+        text += "3) 이동 속도 증가(이동 간격 감소)\n";
+      } else {
+        text += "직업이 설정되어 있지 않습니다.\n";
+      }
+      text += "\n배울 스킬 번호를 입력하세요 (취소: 빈 칸):";
+
+      const input = prompt(text);
+      if (!input) return;
+      const choice = parseInt(input, 10);
+      if (isNaN(choice) || choice < 1 || choice > 3) return;
+
+      if (player.skillPoints <= 0) {
+        addLog("스킬 포인트가 부족합니다.");
+        return;
+      }
+
+      if (player.classType === "warrior") {
+        if (choice === 1) {
+          player.baseAttack += 1;
+          addLog("스킬 트리: 공격력 +1");
+        } else if (choice === 2) {
+          player.maxHp += 5;
+          player.hp += 5;
+          addLog("스킬 트리: 최대 HP +5");
+        } else if (choice === 3) {
+          player.baseDefense += 1;
+          addLog("스킬 트리: 방어력 +1");
+        }
+      } else if (player.classType === "mage") {
+        if (choice === 1) {
+          player.baseAttack += 1;
+          addLog("스킬 트리: 공격력 +1");
+        } else if (choice === 2) {
+          player.maxMp += 3;
+          player.mp += 3;
+          addLog("스킬 트리: 최대 MP +3");
+        } else if (choice === 3) {
+          player.magicBonus += 1;
+          addLog("스킬 트리: 마법 추가 피해 +1");
+        }
+      } else if (player.classType === "rogue") {
+        if (choice === 1) {
+          player.baseAttack += 1;
+          addLog("스킬 트리: 공격력 +1");
+        } else if (choice === 2) {
+          player.critChance += 0.05;
+          addLog("스킬 트리: 치명타 확률 +5%");
+        } else if (choice === 3) {
+          stepInterval = Math.max(60, stepInterval - 15);
+          addLog("스킬 트리: 이동 속도 증가 (칸당 이동 간격 감소)");
+        }
+      }
+
+      player.skillPoints -= 1;
+      updateDerivedStats();
+    }
+
+    // ===== 층 이동 / 이동 처리 (W/S 길게 누르면 반복) =====
+    function nextFloor() {
+      floor++;
+      addLog(`${floor}층으로 올라왔습니다.`);
+      player.x = 1;
+      player.y = MAP_SIZE - 2;
+      generateMap();
+      spawnEnemies(6 + Math.floor(floor / 2));
+      player.mp = Math.min(player.maxMp, player.mp + 4);
+      updateFloorQuestProgress();
+    }
+
+    function forwardDirection() {
+      // 각도 기준으로 타일 단위 방향
+      const dx = Math.round(Math.cos(player.angle));
+      const dy = Math.round(Math.sin(player.angle));
+      return { dx, dy };
+    }
+
+    function moveForward() {
+      if (!gameStarted || gameOver) return;
+      const { dx, dy } = forwardDirection();
+
+      // 맨 위 줄 바로 아래(y === 1)에서 위로 이동하면 다음 층
+      if (dy === -1 && player.y === 1) {
+        nextFloor();
+        playerActionDone();
+        return;
+      }
+
+      const nx = player.x + dx;
+      const ny = player.y + dy;
+      if (!isWalkableTile(nx, ny)) {
+        addLog("벽입니다. 이동 불가.");
+        return;
+      }
+      const enemy = findEnemyAt(nx, ny);
+      if (enemy) {
+        attack(player, enemy, true);
+      } else {
+        player.x = nx;
+        player.y = ny;
+      }
+      playerActionDone();
+    }
+
+    function moveBackward() {
+      if (!gameStarted || gameOver) return;
+      const { dx, dy } = forwardDirection();
+      const nx = player.x - dx;
+      const ny = player.y - dy;
+      if (!isWalkableTile(nx, ny)) {
+        addLog("벽입니다. 이동 불가.");
+        return;
+      }
+      const enemy = findEnemyAt(nx, ny);
+      if (enemy) {
+        attack(player, enemy, true);
+      } else {
+        player.x = nx;
+        player.y = ny;
+      }
+      playerActionDone();
+    }
+
+    function turnLeft() {
+      if (!gameStarted || gameOver) return;
+      player.angle = normalizeAngle(player.angle - 0.12);
+    }
+
+    function turnRight() {
+      if (!gameStarted || gameOver) return;
+      player.angle = normalizeAngle(player.angle + 0.12);
+    }
+
+    function startJump() {
+      if (!gameStarted || gameOver) return;
+      if (player.jumping) return;
+      player.jumping = true;
+      player.vz = JUMP_VEL;
+    }
+
+    // ===== 3D 렌더링 (레이캐스팅) =====
+    function render3D() {
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // 하늘 / 바닥
+      ctx.fillStyle = "#202035";
+      ctx.fillRect(0, 0, w, h / 2);
+      ctx.fillStyle = "#101010";
+      ctx.fillRect(0, h / 2, w, h / 2);
+
+      const px = player.x + 0.5;
+      const py = player.y + 0.5;
+      const angle = getAngle();
+
+      depthBuffer = new Array(w);
+
+      // 벽 그리기
+      for (let x = 0; x < w; x++) {
+        const cameraX = (2 * x) / w - 1; // -1 ~ 1
+        const rayAngle = angle + cameraX * FOV;
+        let dist = 0;
+        let hit = false;
+        const step = 0.03;
+
+        while (!hit && dist < MAX_DEPTH) {
+          dist += step;
+          const rx = px + Math.cos(rayAngle) * dist;
+          const ry = py + Math.sin(rayAngle) * dist;
+          if (isWallAt(rx, ry)) {
+            hit = true;
+          }
+        }
+
+        if (!hit) {
+          depthBuffer[x] = MAX_DEPTH;
+          continue;
+        }
+        const correctedDist = dist * Math.cos(rayAngle - angle);
+        depthBuffer[x] = correctedDist;
+
+        const lineHeight = (h / correctedDist) * 1.2;
+        const cameraHeightOffset = player.z * h;
+        const startY = h / 2 - lineHeight / 2 - cameraHeightOffset;
+        const endY = startY + lineHeight;
+
+        const shade = Math.max(0, 180 - correctedDist * 15);
+        ctx.strokeStyle = `rgb(${shade},${shade},${shade})`;
+        ctx.beginPath();
+        ctx.moveTo(x, startY);
+        ctx.lineTo(x, endY);
+        ctx.stroke();
+      }
+
+      // 몬스터 3D 렌더링
+      drawEnemies3D(px, py, angle, w, h);
+
+      // 미니맵 + 크로스헤어
+      drawMiniMap();
+      drawCrosshair();
+    }
+
+    // 몬스터를 3D 스프라이트처럼 그리기
+    function drawEnemies3D(px, py, angle, w, h) {
+      ctx.save();
+      for (const e of enemies) {
+        if (e.hp <= 0) continue;
+
+        const ex = e.x + 0.5;
+        const ey = e.y + 0.5;
+
+        const dx = ex - px;
+        const dy = ey - py;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 0.1 || dist > MAX_DEPTH) continue;
+
+        const angleToEnemy = Math.atan2(dy, dx);
+        const diff = smallestAngleDiff(angleToEnemy, angle);
+
+        // 시야 범위 밖이면 스킵
+        if (Math.abs(diff) > FOV / 2 + 0.2) continue;
+
+        // 화면 상의 X 위치 (0 ~ w)
+        const screenX = (diff / (FOV / 2)) * (w / 2) + w / 2;
+
+        // 스프라이트 크기
+        const spriteHeight = (h / dist) * 1.5;
+        const spriteWidth = spriteHeight * 0.6;
+
+        const top = h / 2 - spriteHeight / 2 - player.z * h;
+        const left = screenX - spriteWidth / 2;
+
+        const startX = Math.max(0, Math.floor(left));
+        const endX = Math.min(w - 1, Math.floor(left + spriteWidth));
+
+        for (let x = startX; x <= endX; x++) {
+          // 벽보다 뒤에 있으면 가려짐
+          if (dist > depthBuffer[x]) continue;
+
+          const lineXNorm = (x - left) / spriteWidth; // 0~1
+          // HP에 따라 색 조금 다르게 (많이 맞으면 어두워짐)
+          const hpRatio = Math.max(0, e.hp / e.maxHp);
+          const baseR = 200;
+          const baseG = 40 * hpRatio;
+          const baseB = 40 * hpRatio;
+
+          ctx.strokeStyle = `rgb(${baseR},${Math.floor(
+            baseG
+          )},${Math.floor(baseB)})`;
+          ctx.beginPath();
+          ctx.moveTo(x, top);
+          ctx.lineTo(x, top + spriteHeight);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // 원형 미니맵
+    function drawMiniMap() {
+      const radius = 50;
+      const scale = 3; // 타일 간 거리 (px)
+      const centerX = radius + 10;
+      const centerY = radius + 10;
+      const viewRange = 10; // 플레이어 주변 10타일
+
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+
+      // 원형 클리핑
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.clip();
+
+      // 배경
+      ctx.fillStyle = "#000";
+      ctx.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+
+      // 타일
+      for (let dy = -viewRange; dy <= viewRange; dy++) {
+        for (let dx = -viewRange; dx <= viewRange; dx++) {
+          const tx = player.x + dx;
+          const ty = player.y + dy;
+          const px = centerX + dx * scale;
+          const py = centerY + dy * scale;
+
+          const distSq =
+            (px - centerX) * (px - centerX) +
+            (py - centerY) * (py - centerY);
+          if (distSq > radius * radius) continue;
+
+          if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) continue;
+
+          if (map[ty][tx] === TILE.WALL) ctx.fillStyle = "#666";
+          else ctx.fillStyle = "#222";
+          ctx.fillRect(px - 1, py - 1, 2, 2);
+        }
+      }
+
+      // 몬스터
+      for (const e of enemies) {
+        const dx = e.x - player.x;
+        const dy = e.y - player.y;
+        const px = centerX + dx * scale;
+        const py = centerY + dy * scale;
+        const distSq =
+          (px - centerX) * (px - centerX) +
+          (py - centerY) * (py - centerY);
+        if (distSq > radius * radius) continue;
+        ctx.fillStyle = "#d33";
+        ctx.fillRect(px - 2, py - 2, 4, 4);
+      }
+
+      // 플레이어 위치
+      ctx.fillStyle = "#3d3";
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 플레이어 방향 화살표
+      const ang = player.angle;
+      const arrowLen = 12;
+      const tipX = centerX + Math.cos(ang) * arrowLen;
+      const tipY = centerY + Math.sin(ang) * arrowLen;
+      const leftX =
+        centerX + Math.cos(ang + Math.PI * 0.75) * 6;
+      const leftY =
+        centerY + Math.sin(ang + Math.PI * 0.75) * 6;
+      const rightX =
+        centerX + Math.cos(ang - Math.PI * 0.75) * 6;
+      const rightY =
+        centerY + Math.sin(ang - Math.PI * 0.75) * 6;
+
+      ctx.fillStyle = "#3d3";
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(leftX, leftY);
+      ctx.lineTo(rightX, rightY);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // 중앙 크로스헤어
+    function drawCrosshair() {
+      const w = canvas.width;
+      const h = canvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+      ctx.save();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, cy);
+      ctx.lineTo(cx + 6, cy);
+      ctx.moveTo(cx, cy - 6);
+      ctx.lineTo(cx, cy + 6);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // ===== 상태창 렌더링 =====
+    function renderStats() {
+      const weaponText = player.weaponName || "없음";
+      const armorText = player.armorName || "없음";
+      let text =
+        `층: ${floor}\n` +
+        `직업: ${
+          player.classType === "warrior"
+            ? "전사"
+            : player.classType === "mage"
+            ? "마법사"
+            : player.classType === "rogue"
+            ? "도적"
+            : "없음"
+        }\n` +
+        `레벨: ${player.level}\n` +
+        `HP: ${player.hp} / ${player.maxHp}\n` +
+        `MP: ${player.mp} / ${player.maxMp}\n` +
+        `공격력: ${player.attack}, 방어력: ${player.defense}\n` +
+        `무기: ${weaponText}\n` +
+        `방어구: ${armorText}\n` +
+        `골드: ${player.gold}, 포션: ${player.potions}\n` +
+        `XP: ${player.xp} / ${player.xpToNext}\n` +
+        `스킬 포인트: ${player.skillPoints}\n` +
+        `스킬 쿨타임: ${skillCooldown}턴, 마법 쿨타임: ${magicCooldown}턴\n`;
+
+      if (quests.length > 0) {
+        const q = quests[0];
+        const prog =
+          q.type === "kill"
+            ? `${q.progress}/${q.goal}`
+            : `${Math.min(floor, q.goal)}/${q.goal}`;
+        const status = q.completed
+          ? q.claimed
+            ? "완료(보상 수령)"
+            : "완료"
+          : "진행 중";
+        text += `주 퀘스트: ${q.name} (${prog}, ${status})`;
+      }
+
+      statsEl.textContent = text;
+    }
+
+    // ===== 점프/이동 업데이트 =====
+    function updateJump() {
+      if (!player.jumping) return;
+      player.z += player.vz;
+      player.vz -= GRAVITY;
+      if (player.z <= 0) {
+        player.z = 0;
+        player.vz = 0;
+        player.jumping = false;
+      }
+    }
+
+    function updateMovement(dtMs) {
+      if (!gameStarted || gameOver) return;
+
+      if (keyState.w) {
+        moveTimerW += dtMs;
+        if (moveTimerW >= stepInterval) {
+          moveForward();
+          moveTimerW = 0;
+        }
+      } else {
+        moveTimerW = 0;
+      }
+
+      if (keyState.s) {
+        moveTimerS += dtMs;
+        if (moveTimerS >= stepInterval) {
+          moveBackward();
+          moveTimerS = 0;
+        }
+      } else {
+        moveTimerS = 0;
+      }
+    }
+
+    // ===== 메인 루프 =====
+    let lastTime = performance.now();
+    function loop(timestamp) {
+      const dt = timestamp - lastTime;
+      lastTime = timestamp;
+      updateJump();
+      updateMovement(dt);
+      render3D();
+      renderStats();
+      requestAnimationFrame(loop);
+    }
+
+    // ===== 입력 처리 =====
+    window.addEventListener("keydown", (e) => {
+      const key = e.key;
+      if (key === "w" || key === "W") {
+        e.preventDefault();
+        keyState.w = true;
+      } else if (key === "s" || key === "S") {
+        e.preventDefault();
+        keyState.s = true;
+      } else if (key === "a" || key === "A") {
+        e.preventDefault();
+        turnLeft();
+      } else if (key === "d" || key === "D") {
+        e.preventDefault();
+        turnRight();
+      } else if (key === " " || key === "Spacebar") {
+        e.preventDefault();
+        startJump();
+      } else if (key === "b" || key === "B") {
+        e.preventDefault();
+        openShop();
+      } else if (key === "q" || key === "Q") {
+        e.preventDefault();
+        usePotion();
+      }
+    });
+
+    window.addEventListener("keyup", (e) => {
+      const key = e.key;
+      if (key === "w" || key === "W") {
+        keyState.w = false;
+      } else if (key === "s" || key === "S") {
+        keyState.s = false;
+      }
+    });
+
+    // 버튼
+    skillBtnEl.addEventListener("click", () => {
+      useSkill();
+    });
+    magicBtnEl.addEventListener("click", () => {
+      useMagic();
+    });
+    questBtnEl.addEventListener("click", () => {
+      openQuestWindow();
+    });
+    skillTreeBtnEl.addEventListener("click", () => {
+      openSkillTree();
+    });
+
+    // ===== 마우스 시점 회전 (Pointer Lock) =====
+    canvas.addEventListener("click", () => {
+      if (!document.pointerLockElement) {
+        canvas.requestPointerLock();
+      }
+    });
+
+    document.addEventListener("pointerlockchange", () => {
+      pointerLocked = document.pointerLockElement === canvas;
+    });
+
+    document.addEventListener("mousemove", (e) => {
+      if (!pointerLocked || !gameStarted || gameOver) return;
+      player.angle = normalizeAngle(
+        player.angle + e.movementX * MOUSE_SENSITIVITY
+      );
+    });
+
+    // ===== 시작 처리 =====
+    function startGame() {
+      if (gameStarted) return;
+      gameStarted = true;
+      gameOver = false;
+      floor = 1;
+      player.x = 1;
+      player.y = MAP_SIZE - 2;
+      player.angle = 0;
+      player.gold = 0;
+      player.potions = 0;
+      player.xp = 0;
+      player.level = 1;
+      player.xpToNext = 10;
+      player.weaponAttack = 0;
+      player.armorDefense = 0;
+      player.weaponName = null;
+      player.armorName = null;
+      player.z = 0;
+      player.vz = 0;
+      player.jumping = false;
+      player.skillPoints = 0;
+      player.magicBonus = 0;
+      skillCooldown = 0;
+      magicCooldown = 0;
+      initQuests();
+      updateDerivedStats();
+      generateMap();
+      spawnEnemies(6);
+      updateFloorQuestProgress();
+      addLog("Mini Bit Adventure 3D 시작!");
+      addLog("캔버스를 클릭해서 마우스로 시점을 돌리고, W/S를 길게 눌러 이동하세요.");
+    }
+
+    startBtnEl.addEventListener("click", () => {
+      if (gameStarted) return;
+      const type = classSelectEl.value;
+      applyClass(type);
+      startGame();
+    });
+
+    // 초기 세팅
+    generateMap();
+    initQuests();
+    addLog("직업을 선택하고 '게임 시작' 버튼을 누르세요.");
+    requestAnimationFrame(loop);
+  </script>
 </body>
 </html>
