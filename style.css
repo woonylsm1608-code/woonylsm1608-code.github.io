@@ -1,38 +1,28 @@
 body {
-    text-align: center;
-    font-family: Arial;
-    background: #f3f3f3;
+  font-family: sans-serif;
+  padding: 20px;
+  background: #222;
+  color: #eee;
 }
 
-#board {
-    display: grid;
-    grid-template-columns: repeat(5, 80px);
-    grid-gap: 5px;
-    justify-content: center;
-    margin-top: 20px;
+#drop-zone {
+  border: 2px dashed #888;
+  padding: 30px;
+  text-align: center;
+  margin-bottom: 10px;
+  cursor: pointer;
 }
 
-.cell {
-    width: 80px;
-    height: 80px;
-    font-size: 40px;
-    background: white;
-    border: 2px solid #333;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
+#options {
+  margin: 15px 0;
 }
 
-.cell:hover {
-    background: #e2e2e2;
-}
-
-#level-box {
-    margin: 10px 0;
-}
-
-#status {
-    margin-top: 20px;
-    font-size: 22px;
+#result {
+  white-space: pre-wrap;
+  background: #111;
+  padding: 15px;
+  border-radius: 5px;
+  margin-top: 20px;
+  max-height: 300px;
+  overflow-y: auto;
 }

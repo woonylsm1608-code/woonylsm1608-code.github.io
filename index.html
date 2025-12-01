@@ -1,26 +1,43 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-<meta charset="utf-8">
-<title>Free OCR</title>
+<meta charset="UTF-8">
+<title>Free OCR (Full Version)</title>
+<link rel="stylesheet" href="style.css">
+
+<!-- Tesseract.js -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
+
+<!-- PDF.js for PDF OCR -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.js"></script>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
 </head>
 <body>
-<h2>Free OCR (Browser-based)</h2>
-<input type="file" id="file" />
+
+<h1>Free OCR (Full Options)</h1>
+
+<div id="drop-zone">여기에 이미지 또는 PDF를 드래그하세요</div>
+<input type="file" id="file" accept="image/*,application/pdf">
+
+<div id="options">
+  <label>언어 자동 감지</label>
+  <select id="lang">
+    <option value="kor">한국어</option>
+    <option value="eng">영어</option>
+    <option value="auto">자동감지</option>
+  </select>
+
+  <label>전처리(흑백 변환)</label>
+  <input type="checkbox" id="preprocess">
+</div>
+
+<button id="copy">결과 복사</button>
+
 <pre id="result"></pre>
 
-<script>
-document.getElementById("file").addEventListener("change", async function(){
-  const file = this.files[0];
-  const result = document.getElementById("result");
+<script src="script.js"></script>
 
-  const { data: { text } } = await Tesseract.recognize(
-    file,
-    'eng',   // 'kor'로 변경 가능
-  );
-  result.textContent = text;
-});
-</script>
 </body>
 </html>
