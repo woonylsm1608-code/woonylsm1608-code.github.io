@@ -1,43 +1,75 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<title>Free OCR (Full Version)</title>
-<link rel="stylesheet" href="style.css">
-
-<!-- Tesseract.js -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
-
-<!-- PDF.js for PDF OCR -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.js"></script>
-
-<!-- PWA -->
-<link rel="manifest" href="manifest.json">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>간단한 OCR 테스트</title>
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        #result, #status {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            white-space: pre-wrap; /* 줄바꿈과 공백을 그대로 표시 */
+        }
+        #status { color: #555; }
+    </style>
 </head>
 <body>
 
-<h1>Free OCR (Full Options)</h1>
+    <h2>간단한 이미지 OCR (Tesseract.js)</h2>
+    <p>텍스트가 포함된 이미지 파일(PNG, JPG 등)을 선택하세요.</p>
 
-<div id="drop-zone">여기에 이미지 또는 PDF를 드래그하세요</div>
-<input type="file" id="file" accept="image/*,application/pdf">
+    <input type="file" id="uploader" accept="image/*" />
+    
+    <button id="recognizeBtn">텍스트 추출하기</button>
 
-<div id="options">
-  <label>언어 자동 감지</label>
-  <select id="lang">
-    <option value="kor">한국어</option>
-    <option value="eng">영어</option>
-    <option value="auto">자동감지</option>
-  </select>
+    <div id="status">준비 중...</div>
 
-  <label>전처리(흑백 변환)</label>
-  <input type="checkbox" id="preprocess">
-</div>
+    <h3>추출된 텍스트:</h3>
+    <pre id="result">아직 추출된 내용이 없습니다.</pre>
 
-<button id="copy">결과 복사</button>
+    <script>
+        const uploader = document.getElementById('uploader');
+        const recognizeBtn = document.getElementById('recognizeBtn');
+        const statusEl = document.getElementById('status');
+        const resultEl = document.getElementById('result');
 
-<pre id="result"></pre>
+        recognizeBtn.addEventListener('click', () => {
+            const file = uploader.files[0];
+            if (!file) {
+                statusEl.textContent = '파일을 먼저 선택해주세요.';
+                return;
+            }
 
-<script src="script.js"></script>
+            statusEl.textContent = '텍스트를 인식하는 중... (파일 크기에 따라 시간이 걸릴 수 있습니다)';
+            resultEl.textContent = '...';
+
+            // Tesseract.js 실행
+            Tesseract.recognize(
+                file,
+                'eng+kor', // 영어(eng)와 한국어(kor) 인식
+                {
+                    logger: m => {
+                        console.log(m); // 진행 상황을 콘솔에 출력
+                        if (m.status === 'recognizing text') {
+                            statusEl.textContent = `인식 중... (${Math.round(m.progress * 100)}%)`;
+                        }
+                    }
+                }
+            ).then(({ data: { text } }) => {
+                // OCR 완료
+                statusEl.textContent = '인식 완료!';
+                resultEl.textContent = text;
+            }).catch(err => {
+                console.error(err);
+                statusEl.textContent = '오류가 발생했습니다.';
+                resultEl.textContent = '';
+            });
+        });
+    </script>
 
 </body>
 </html>
