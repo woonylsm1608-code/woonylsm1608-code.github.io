@@ -1,102 +1,390 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>확장 OCR 데모 (Tesseract.js)</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>OCR + 비밀번호 기반 AI 채팅 (파일 업로드 전용)</title>
 
-  <!-- Tesseract.js -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<!-- Tesseract.js -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<!-- Cropper (선택) -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<!-- jsPDF (PDF 다운로드) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <!-- Cropper.js (선택 영역 크롭) -->
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet"/>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-
-  <!-- jsPDF (PDF 내보내기) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-  <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", Arial; padding:20px; max-width:1100px; margin:auto; }
-    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    #drop { border:2px dashed #bbb; padding:18px; text-align:center; border-radius:8px; cursor:pointer; flex:1; min-height:120px; }
-    #previewWrap { position:relative; width:420px; height:320px; border:1px solid #ddd; display:flex; align-items:center; justify-content:center; background:#f7f7f7; }
-    #preview { max-width:100%; max-height:100%; display:block; }
-    canvas { display:block; max-width:100%; }
-    #overlayCanvas { position:absolute; left:0; top:0; pointer-events:none; }
-    #status { margin-top:12px; color:#333; min-height:22px; }
-    progress { width:100%; height:14px; }
-    .controls { display:flex; gap:8px; flex-wrap:wrap; }
-    select, button, input[type="file"] { padding:6px 8px; }
-    #result { white-space:pre-wrap; border:1px solid #ddd; padding:10px; min-height:120px; background:#fff; overflow:auto; }
-    .small { font-size:13px; color:#555; }
-    #video { width:420px; height:320px; background:#000; }
-  </style>
+<style>
+  :root{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR",Arial;--muted:#666;}
+  body{max-width:1000px;margin:20px auto;padding:16px;}
+  h1{font-size:18px;margin:0 0 8px;}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+  #drop{flex:1;min-height:110px;border:2px dashed #cfcfcf;border-radius:8px;padding:12px;display:flex;flex-direction:column;justify-content:center;align-items:center;cursor:pointer;background:#fff;}
+  #previewWrap{width:420px;height:320px;border:1px solid #e0e0e0;display:flex;align-items:center;justify-content:center;background:#fafafa;position:relative;}
+  #preview{max-width:100%;max-height:100%;display:block;}
+  #overlayCanvas{position:absolute;left:0;top:0;pointer-events:none;}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;}
+  button,select,input[type="text"],input[type="password"]{padding:6px 8px;border:1px solid #ccc;border-radius:6px;background:#fff;}
+  #status{margin-top:10px;color:var(--muted);min-height:20px;}
+  progress{width:100%;height:14px;display:none;}
+  #result{white-space:pre-wrap;border:1px solid #e6e6e6;padding:10px;min-height:120px;background:#fff;}
+  footer{position:fixed;left:12px;right:12px;bottom:12px;padding:8px;background:rgba(255,255,255,0.95);border:1px solid #e8e8e8;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.05);display:flex;align-items:center;gap:8px;}
+  #pwInput{flex:0 0 220px;}
+  #chatPanel{display:none;border:1px solid #ddd;padding:8px;border-radius:8px;margin-top:12px;background:#fff;}
+  #messages{height:220px;overflow:auto;border:1px solid #eee;padding:8px;background:#fbfbfb;}
+  .msg{margin:6px 0;}
+  .msg.ai{color:#003a8c;}
+  .msg.user{color:#1a1a1a;text-align:right;}
+  small.link{color:var(--muted);display:block;margin-top:6px;}
+</style>
 </head>
 <body>
 
-  <h2>확장 OCR (Tesseract.js)</h2>
+<h1>확장 OCR (파일 업로드 전용) + 비밀번호 기반 AI 채팅</h1>
 
-  <div class="row">
-    <div id="drop">
-      파일을 드래그하거나 클릭하여 업로드<br>
-      <input id="fileInput" type="file" accept="image/*,application/pdf" style="display:none" multiple />
-      <div class="small">이미지/PDF(1장씩 권장). 여러 장 업로드 가능.</div>
-    </div>
-
-    <div id="previewWrap">
-      <img id="preview" alt="preview" />
-      <canvas id="overlayCanvas"></canvas>
-    </div>
+<div class="row">
+  <div id="drop" title="클릭 또는 드래그하여 업로드">
+    <div style="font-weight:600">이미지를 드래그하거나 여기를 클릭하여 업로드</div>
+    <div style="font-size:13px;color:var(--muted);margin-top:6px">PNG/JPG 권장. 파일을 직접 선택하면 OCR 준비됩니다.</div>
+    <input id="fileInput" type="file" accept="image/*,application/pdf" style="display:none" />
+    <button id="chooseFileBtn" style="margin-top:8px">파일 선택</button>
   </div>
 
-  <div class="row" style="margin-top:10px;">
-    <div class="controls">
-      <button id="startOCR">OCR 시작</button>
-      <button id="cropBtn">크롭 모드 토글</button>
-      <button id="useCrop">크롭 적용</button>
-      <button id="clearOverlay">바운딩 제거</button>
-      <button id="downloadTxt">텍스트 다운로드</button>
-      <button id="downloadJson">JSON 다운로드</button>
-      <button id="downloadPdf">PDF로 내보내기</button>
-      <button id="copyBtn">클립보드 복사</button>
-    </div>
+  <div id="previewWrap">
+    <img id="preview" alt="preview" />
+    <canvas id="overlayCanvas"></canvas>
+  </div>
+</div>
 
-    <div style="margin-left:8px;">
-      <label for="lang">언어:</label>
-      <select id="lang">
-        <option value="eng+kor">eng + kor</option>
-        <option value="eng">eng</option>
-        <option value="kor">kor</option>
-        <option value="spa">spa</option>
-      </select>
+<div style="margin-top:10px;" class="controls">
+  <button id="startOCR">OCR 실행</button>
+  <button id="cropBtn">크롭 켜기</button>
+  <button id="applyCrop">크롭 적용</button>
+  <button id="clearBoxes">바운딩박스 지우기</button>
+  <select id="lang">
+    <option value="eng+kor">eng+kor</option>
+    <option value="kor">kor</option>
+    <option value="eng">eng</option>
+  </select>
+  <select id="psm">
+    <option value="3">PSM 3 (자동)</option>
+    <option value="6">PSM 6 (단일 블록)</option>
+    <option value="11">PSM 11 (드문 텍스트)</option>
+  </select>
+  <button id="downloadTxt">TXT 다운로드</button>
+  <button id="downloadJson">JSON 다운로드</button>
+  <button id="downloadPdf">PDF 다운로드</button>
+</div>
 
-      <label for="psm">PSM:</label>
-      <select id="psm">
-        <option value="3">3 - Fully automatic</option>
-        <option value="6">6 - Assume a single uniform block of text</option>
-        <option value="11">11 - Sparse text</option>
-      </select>
-    </div>
+<div id="status">준비됨.</div>
+<progress id="progress" value="0" max="1"></progress>
+
+<h3>OCR 결과</h3>
+<div id="result">아직 인식된 텍스트가 없습니다.</div>
+
+<!-- Chat panel (비밀번호 입력 후 활성화) -->
+<div id="chatPanel">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <strong>AI 채팅 (활성화됨)</strong>
+    <div style="font-size:12px;color:var(--muted)">OpenAI 연동은 선택사항 — 키를 입력하면 실사용 가능</div>
+  </div>
+  <div id="messages"></div>
+
+  <div style="display:flex;gap:8px;margin-top:8px;">
+    <input id="apiKeyInput" type="password" placeholder="(선택) OpenAI API 키 넣기 (클라이언트 저장)" style="flex:1" />
+    <button id="saveKey">키 저장</button>
+    <button id="clearKey">키 삭제</button>
   </div>
 
-  <div id="status" class="small">준비됨.</div>
-  <progress id="progress" value="0" max="1" style="width:100%; display:none"></progress>
-
-  <h3>OCR 결과</h3>
-  <div id="result">아직 인식된 텍스트가 없습니다.</div>
-
-  <h3 class="small">웹캠 캡처</h3>
-  <div class="row">
-    <video id="video" autoplay muted playsinline></video>
-    <div style="display:flex;flex-direction:column;gap:8px;">
-      <button id="cameraStart">카메라 켜기</button>
-      <button id="capture">캡처 & OCR</button>
-      <button id="cameraStop">카메라 끄기</button>
-    </div>
+  <div style="display:flex;gap:8px;margin-top:8px;">
+    <input id="userMsg" type="text" placeholder="메시지를 입력하세요" style="flex:1" />
+    <button id="sendBtn">전송</button>
   </div>
+
+  <small class="link">※ 브라우저에 직접 키를 넣으면 키가 클라이언트에 저장됩니다. 위험을 이해하고 사용하세요. (권장: 로컬 테스트용)</small>
+</div>
+
+<footer>
+  <input id="pwInput" type="password" placeholder="비밀번호 입력 (사이트 하단)" />
+  <button id="pwBtn">입력</button>
+  <div style="flex:1;color:var(--muted);font-size:13px">비밀번호 입력 시 AI 채팅 패널이 표시됩니다.</div>
+</footer>
 
 <script>
 (async () => {
   // DOM
   const drop = document.getElementById('drop');
   const fileInput = document.getElementById('fileInput');
+  const chooseFileBtn = document.getElementById('chooseFileBtn');
+  const preview = document.getElementById('preview');
+  const overlayCanvas = document.getElementById('overlayCanvas');
+  const startOCR = document.getElementById('startOCR');
+  const statusEl = document.getElementById('status');
+  const progressEl = document.getElementById('progress');
+  const resultEl = document.getElementById('result');
+  const langSel = document.getElementById('lang');
+  const psmSel = document.getElementById('psm');
+  const downloadTxt = document.getElementById('downloadTxt');
+  const downloadJson = document.getElementById('downloadJson');
+  const downloadPdf = document.getElementById('downloadPdf');
+  const cropBtn = document.getElementById('cropBtn');
+  const applyCrop = document.getElementById('applyCrop');
+  const clearBoxes = document.getElementById('clearBoxes');
+
+  // Chat related
+  const pwInput = document.getElementById('pwInput');
+  const pwBtn = document.getElementById('pwBtn');
+  const chatPanel = document.getElementById('chatPanel');
+  const messagesDiv = document.getElementById('messages');
+  const userMsg = document.getElementById('userMsg');
+  const sendBtn = document.getElementById('sendBtn');
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  const saveKeyBtn = document.getElementById('saveKey');
+  const clearKeyBtn = document.getElementById('clearKey');
+
+  // cropper
+  let cropper = null;
+  let cropMode = false;
+
+  // file state
+  let currentFile = null;
+  let lastOcrData = null;
+
+  // Tesseract worker
+  const { createWorker } = Tesseract;
+  const worker = await createWorker({
+    logger: m => {
+      if (m.status && m.status.includes('recogniz')) {
+        progressEl.style.display = 'block';
+        progressEl.value = m.progress || 0;
+        statusEl.textContent = `${m.status} (${Math.round((m.progress||0)*100)}%)`;
+      } else if (m.status) {
+        statusEl.textContent = m.status;
+      }
+    }
+  });
+  await worker.load();
+
+  // utility: preview
+  function setPreviewFromFile(file) {
+    if (!file) return;
+    if (window._previewUrl) URL.revokeObjectURL(window._previewUrl);
+    window._previewUrl = URL.createObjectURL(file);
+    preview.src = window._previewUrl;
+    preview.onload = () => { setupOverlayCanvas(); };
+  }
+
+  function setupOverlayCanvas(){
+    const rect = preview.getBoundingClientRect();
+    overlayCanvas.width = preview.clientWidth;
+    overlayCanvas.height = preview.clientHeight;
+    overlayCanvas.style.width = preview.clientWidth+'px';
+    overlayCanvas.style.height = preview.clientHeight+'px';
+    overlayCanvas.style.left = preview.offsetLeft+'px';
+    overlayCanvas.style.top = preview.offsetTop+'px';
+    const ctx = overlayCanvas.getContext('2d'); ctx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+  }
+
+  function drawBoxes(words){
+    if (!words || !words.length) return;
+    const ctx = overlayCanvas.getContext('2d'); ctx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+    const sx = overlayCanvas.width / (preview.naturalWidth || preview.width || 1000);
+    const sy = overlayCanvas.height / (preview.naturalHeight || preview.height || 800);
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,0,0,0.9)'; ctx.fillStyle='rgba(255,0,0,0.2)';
+    for (const w of words){
+      const x = w.bbox.x0 * sx, y = w.bbox.y0 * sy;
+      const wW = (w.bbox.x1 - w.bbox.x0) * sx, hH = (w.bbox.y1 - w.bbox.y0) * sy;
+      ctx.strokeRect(x,y,wW,hH);
+      ctx.font='10px sans-serif'; ctx.fillText(w.text||'', x, y>10?y-2:y+10);
+    }
+  }
+
+  // drag & drop + click
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.borderColor='#6aa'; });
+  drop.addEventListener('dragleave', e => { drop.style.borderColor=''; });
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); drop.style.borderColor='';
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length) handleFiles(files);
+  });
+  chooseFileBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => handleFiles(Array.from(e.target.files || [])));
+
+  function handleFiles(files){
+    const file = files[0];
+    if (!file) return;
+    // basic PDF note
+    if (file.type === 'application/pdf') {
+      statusEl.textContent = 'PDF 업로드: 이 데모는 PDF → 이미지 변환을 자동으로 처리하지 않습니다. PDF를 이미지로 변환해 업로드하세요.';
+    }
+    currentFile = file;
+    setPreviewFromFile(file);
+    statusEl.textContent = `선택됨: ${file.name}`;
+  }
+
+  // recognize using File/Blob directly (avoid fetch(objectURL) — more robust)
+  async function recognizeBlob(blobOrFile){
+    const lang = langSel.value;
+    statusEl.textContent = '언어 모델 로드 및 초기화...';
+    await worker.loadLanguage(lang);
+    await worker.initialize(lang);
+    await worker.setParameters({ tessedit_pageseg_mode: Number(psmSel.value) });
+    statusEl.textContent = '인식 중...';
+    const { data } = await worker.recognize(blobOrFile);
+    lastOcrData = data;
+    resultEl.textContent = data.text || '';
+    if (data.words && data.words.length) drawBoxes(data.words);
+    statusEl.textContent = '인식 완료';
+    progressEl.style.display = 'none';
+    return data;
+  }
+
+  startOCR.addEventListener('click', async () => {
+    if (!currentFile) { statusEl.textContent = '먼저 이미지를 업로드하세요.'; return; }
+    try {
+      await recognizeBlob(currentFile);
+    } catch (err) {
+      console.error(err); statusEl.textContent = 'OCR 오류: ' + (err.message || err);
+    }
+  });
+
+  // cropper
+  cropBtn.addEventListener('click', () => {
+    if (!preview.src) { statusEl.textContent='이미지를 업로드하세요.'; return; }
+    cropMode = !cropMode;
+    if (cropMode) { cropper = new Cropper(preview, { viewMode:1, autoCropArea:0.8 }); statusEl.textContent='크롭 모드 활성화'; }
+    else { if (cropper){ cropper.destroy(); cropper=null;} statusEl.textContent='크롭 모드 비활성화'; setupOverlayCanvas(); }
+  });
+
+  applyCrop.addEventListener('click', () => {
+    if (!cropper) return;
+    const canvas = cropper.getCroppedCanvas();
+    if (!canvas) { statusEl.textContent='크롭 실패'; return; }
+    canvas.toBlob(blob => {
+      if (!blob) { statusEl.textContent='크롭 변환 실패'; return; }
+      currentFile = new File([blob], 'cropped.png', {type:'image/png'});
+      setPreviewFromFile(currentFile);
+      cropper.destroy(); cropper=null; cropMode=false;
+      statusEl.textContent='크롭 적용됨';
+    }, 'image/png');
+  });
+
+  clearBoxes.addEventListener('click', ()=> { const ctx = overlayCanvas.getContext('2d'); ctx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height); });
+
+  // downloads
+  downloadTxt.addEventListener('click', () => {
+    if (!lastOcrData) { statusEl.textContent='먼저 OCR을 실행하세요.'; return; }
+    const blob = new Blob([lastOcrData.text], {type:'text/plain;charset=utf-8'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download='ocr_result.txt'; a.click(); URL.revokeObjectURL(a.href);
+  });
+  downloadJson.addEventListener('click', () => {
+    if (!lastOcrData) { statusEl.textContent='먼저 OCR을 실행하세요.'; return; }
+    const blob = new Blob([JSON.stringify(lastOcrData, null, 2)], {type:'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download='ocr_result.json'; a.click(); URL.revokeObjectURL(a.href);
+  });
+  downloadPdf.addEventListener('click', () => {
+    if (!lastOcrData) { statusEl.textContent='먼저 OCR을 실행하세요.'; return; }
+    const { jsPDF } = window.jspdf; const doc = new jsPDF();
+    const lines = doc.splitTextToSize(lastOcrData.text || '', 180);
+    doc.text(lines, 10, 10); doc.save('ocr_result.pdf');
+  });
+
+  // Password -> show chat panel
+  pwBtn.addEventListener('click', () => {
+    const v = pwInput.value || '';
+    if (v === 'rhdudns1!!') {
+      chatPanel.style.display = 'block';
+      statusEl.textContent = 'AI 채팅 패널이 활성화되었습니다.';
+      // load saved key if any
+      const saved = sessionStorage.getItem('OPENAI_KEY');
+      if (saved) apiKeyInput.value = saved;
+      pwInput.value = '';
+    } else {
+      statusEl.textContent = '비밀번호가 틀립니다.';
+    }
+  });
+
+  // API key save/clear
+  saveKeyBtn.addEventListener('click', () => {
+    const k = apiKeyInput.value.trim();
+    if (!k) { statusEl.textContent='키를 입력하세요.'; return; }
+    sessionStorage.setItem('OPENAI_KEY', k);
+    statusEl.textContent = 'API 키가 세션에 저장되었습니다. (브라우저를 닫으면 지워짐)';
+  });
+  clearKeyBtn.addEventListener('click', () => {
+    sessionStorage.removeItem('OPENAI_KEY'); apiKeyInput.value=''; statusEl.textContent='API 키 삭제됨';
+  });
+
+  // simple local fallback AI (rule-based)
+  function localAiReply(userText) {
+    const t = userText.toLowerCase();
+    if (t.includes('안녕')||t.includes('hi')) return '안녕하세요 — 로컬 AI(시험용)입니다. OpenAI 키를 입력하면 더 똑똑한 응답을 사용합니다.';
+    if (t.includes('ocr')) return '현재 OCR 결과를 확인하려면 결과 창을 보세요. 필요하면 결과를 분석해줄게요.';
+    if (t.length < 6) return '질문을 조금 더 길게 해 주세요.';
+    // echo + small transform
+    return '로컬 응답: ' + userText.split('').reverse().join('');
+  }
+
+  // append message
+  function appendMsg(text, who='ai'){
+    const d = document.createElement('div'); d.className = 'msg ' + (who==='ai'?'ai':'user'); d.textContent = text; messagesDiv.appendChild(d);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  // send handler: if API key present -> call OpenAI Chat Completions; otherwise fallback to localAiReply
+  sendBtn.addEventListener('click', async () => {
+    const txt = userMsg.value.trim(); if (!txt) return;
+    appendMsg(txt,'user'); userMsg.value='';
+    const key = sessionStorage.getItem('OPENAI_KEY') || apiKeyInput.value.trim();
+    if (key) {
+      appendMsg('생성 중...', 'ai');
+      try {
+        // use OpenAI Chat Completions endpoint (user must provide key)
+        const body = {
+          model: 'gpt-4o-mini', // 모델 이름은 필요 시 변경
+          messages: [{role:'user', content: txt}],
+          max_tokens: 600
+        };
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + key },
+          body: JSON.stringify(body)
+        });
+        if (!resp.ok) {
+          const txtErr = await resp.text();
+          throw new Error('API 오류: ' + resp.status + ' ' + txtErr);
+        }
+        const j = await resp.json();
+        const reply = j?.choices?.[0]?.message?.content ?? '응답을 받지 못했습니다.';
+        // remove the '생성 중...' indicator (last ai msg)
+        const last = messagesDiv.querySelector('.msg.ai:last-child');
+        if (last && last.textContent === '생성 중...') last.remove();
+        appendMsg(reply, 'ai');
+      } catch (err) {
+        // remove spinner
+        const last = messagesDiv.querySelector('.msg.ai:last-child');
+        if (last && last.textContent === '생성 중...') last.remove();
+        appendMsg('API 호출 실패: ' + (err.message || err), 'ai');
+      }
+    } else {
+      // fallback local AI
+      const r = localAiReply(txt);
+      appendMsg(r,'ai');
+    }
+  });
+
+  // allow Enter to send
+  userMsg.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendBtn.click(); } });
+
+  // cleanup worker on unload
+  window.addEventListener('beforeunload', async ()=> {
+    try { await worker.terminate(); } catch(e){/*ignore*/ }
+  });
+
+  // initial overlay canvas setup once preview loaded
+  window.addEventListener('resize', () => { if (preview.src) setupOverlayCanvas(); });
+
+  // Quick detection note: if getUserMedia required later, must be HTTPS/localhost (문서 참조).
+})();
+</script>
+</body>
+</html>
