@@ -3,323 +3,393 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>이미지 텍스트 추출기 (OCR)</title>
+    <title>이미지 & PDF 텍스트 추출기 (OCR)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts: Noto Sans KR -->
+    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <!-- Font Awesome Icons -->
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Tesseract.js CDN -->
+    <!-- Tesseract.js (OCR) -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- PDF.js (PDF to Image) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <script>
+        // PDF.js 워커 설정
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
 
     <style>
-        body {
-            font-family: 'Noto Sans KR', sans-serif;
-            background-color: #f3f4f6;
-        }
-        .drag-active {
-            border-color: #3b82f6 !important;
-            background-color: #eff6ff !important;
-        }
-        /* Custom scrollbar */
-        textarea::-webkit-scrollbar {
-            width: 8px;
-        }
-        textarea::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-        textarea::-webkit-scrollbar-thumb {
-            background: #d1d5db;
-            border-radius: 4px;
-        }
-        textarea::-webkit-scrollbar-thumb:hover {
-            background: #9ca3af;
-        }
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f3f4f6; }
+        .drag-active { border-color: #3b82f6 !important; background-color: #eff6ff !important; }
+        /* 스크롤바 스타일 */
+        textarea::-webkit-scrollbar { width: 8px; }
+        textarea::-webkit-scrollbar-track { background: #f1f1f1; }
+        textarea::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center p-4">
 
-    <!-- Main Container -->
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-5xl overflow-hidden">
         
         <!-- Header -->
-        <div class="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white text-center">
+        <div class="bg-gradient-to-r from-indigo-600 to-purple-700 p-6 text-white text-center">
             <h1 class="text-2xl md:text-3xl font-bold mb-2">
-                <i class="fa-solid fa-file-image mr-2"></i>이미지 텍스트 추출기
+                <i class="fa-solid fa-file-pdf mr-2"></i>이미지 & PDF 텍스트 추출기
             </h1>
-            <p class="text-blue-100 text-sm md:text-base">이미지를 업로드하면 한글과 영어를 자동으로 인식하여 텍스트로 변환합니다.</p>
+            <p class="text-indigo-100 text-sm md:text-base">이미지 또는 PDF를 업로드하여 텍스트로 변환하세요.</p>
         </div>
 
         <div class="flex flex-col md:flex-row h-full">
             
-            <!-- Left Side: Input & Preview -->
+            <!-- Left: Inputs -->
             <div class="w-full md:w-1/2 p-6 border-b md:border-b-0 md:border-r border-gray-200">
                 
-                <!-- Upload Area -->
-                <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:border-blue-400 hover:bg-gray-50 h-64 relative group">
-                    <input type="file" id="file-input" class="hidden" accept="image/*">
+                <!-- Drop Zone -->
+                <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:border-indigo-400 hover:bg-gray-50 h-72 relative group">
+                    <input type="file" id="file-input" class="hidden" accept="image/*,.pdf">
                     
-                    <!-- Placeholder Content -->
                     <div id="upload-placeholder" class="text-center">
-                        <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                        <div class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
                             <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
                         </div>
-                        <p class="text-gray-600 font-medium mb-1">이미지를 드래그하거나 클릭하여 업로드</p>
-                        <p class="text-gray-400 text-xs">지원 형식: PNG, JPG, BMP, PBM</p>
+                        <p id="upload-msg" class="text-gray-600 font-medium mb-1">파일을 드래그하거나 클릭하여 업로드</p>
+                        <p class="text-gray-400 text-xs">지원: JPG, PNG, PDF (단일 파일 기본)</p>
                     </div>
 
-                    <!-- Image Preview -->
-                    <img id="image-preview" class="hidden absolute inset-0 w-full h-full object-contain p-2 bg-gray-50 rounded-xl" alt="Preview">
+                    <!-- File List Preview (for multiple/single files) -->
+                    <div id="file-preview-list" class="hidden w-full h-full overflow-y-auto pr-2 space-y-2">
+                        <!-- JS로 채워짐 -->
+                    </div>
                     
-                    <!-- Remove Image Button -->
-                    <button id="remove-image-btn" class="hidden absolute top-2 right-2 bg-red-500 text-white w-8 h-8 rounded-full shadow-md hover:bg-red-600 transition-colors flex items-center justify-center z-10" title="이미지 제거">
+                    <button id="reset-btn" class="hidden absolute top-2 right-2 bg-red-500 text-white w-8 h-8 rounded-full shadow hover:bg-red-600 flex items-center justify-center z-10">
                         <i class="fa-solid fa-times"></i>
                     </button>
                 </div>
 
-                <!-- Controls -->
+                <!-- Settings -->
                 <div class="mt-6 space-y-4">
                     <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">인식 언어 설정</label>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">언어 선택</label>
                         <div class="grid grid-cols-3 gap-2">
-                            <button class="lang-btn active bg-blue-600 text-white py-2 rounded-lg text-sm font-medium transition-colors border border-blue-600" data-lang="kor+eng">
-                                한글 + 영어
-                            </button>
-                            <button class="lang-btn bg-white text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors border border-gray-300" data-lang="kor">
-                                한글만
-                            </button>
-                            <button class="lang-btn bg-white text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors border border-gray-300" data-lang="eng">
-                                영어만
-                            </button>
+                            <button class="lang-btn active bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium transition-colors" data-lang="kor+eng">한글+영어</button>
+                            <button class="lang-btn bg-white text-gray-700 border border-gray-300 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors" data-lang="kor">한글만</button>
+                            <button class="lang-btn bg-white text-gray-700 border border-gray-300 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors" data-lang="eng">영어만</button>
                         </div>
                     </div>
 
-                    <button id="convert-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i> 텍스트 추출하기
+                    <button id="convert-btn" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 rounded-xl shadow-lg transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-bolt"></i> 텍스트 추출하기
                     </button>
                 </div>
             </div>
 
-            <!-- Right Side: Result & Progress -->
+            <!-- Right: Result -->
             <div class="w-full md:w-1/2 p-6 bg-gray-50 flex flex-col relative">
-                
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-lg font-bold text-gray-800">추출 결과</h2>
-                    <button id="copy-btn" class="text-gray-500 hover:text-blue-600 text-sm font-medium flex items-center gap-1 transition-colors" disabled>
-                        <i class="fa-regular fa-copy"></i> 복사하기
-                    </button>
+                    <div class="flex gap-2">
+                         <span id="multi-badge" class="hidden bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold">다중 파일 모드 ON</span>
+                        <button id="copy-btn" class="text-gray-500 hover:text-indigo-600 text-sm font-medium flex items-center gap-1 transition-colors" disabled>
+                            <i class="fa-regular fa-copy"></i> 복사
+                        </button>
+                    </div>
                 </div>
 
-                <!-- Textarea -->
-                <div class="relative flex-grow">
-                    <textarea id="result-text" class="w-full h-full min-h-[300px] p-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none bg-white text-gray-700 leading-relaxed" placeholder="이미지를 업로드하고 변환 버튼을 누르면 여기에 텍스트가 표시됩니다..."></textarea>
+                <div class="relative flex-grow h-[400px] md:h-auto">
+                    <textarea id="result-text" class="w-full h-full p-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-white text-gray-700 leading-relaxed font-mono text-sm" placeholder="파일을 업로드 후 변환 버튼을 누르세요.&#13;&#10;(팁: 여기에 'ko11'을 입력하면 여러 파일을 동시에 올릴 수 있습니다)"></textarea>
                     
                     <!-- Loading Overlay -->
-                    <div id="loading-overlay" class="hidden absolute inset-0 bg-white/90 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center z-10">
-                        <div class="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-                        <p id="status-text" class="text-gray-700 font-medium animate-pulse">엔진 초기화 중...</p>
-                        
-                        <!-- Progress Bar -->
-                        <div class="w-64 h-2 bg-gray-200 rounded-full mt-4 overflow-hidden">
-                            <div id="progress-bar" class="h-full bg-blue-600 rounded-full transition-all duration-300 w-0"></div>
+                    <div id="loading-overlay" class="hidden absolute inset-0 bg-white/95 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center z-20">
+                        <div class="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-3"></div>
+                        <p id="status-main" class="text-gray-800 font-bold text-lg">처리 중...</p>
+                        <p id="status-sub" class="text-gray-500 text-sm mb-4">잠시만 기다려주세요</p>
+                        <div class="w-64 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div id="progress-bar" class="h-full bg-indigo-600 rounded-full transition-all duration-300 w-0"></div>
                         </div>
                         <p id="progress-percent" class="text-xs text-gray-500 mt-1">0%</p>
                     </div>
                 </div>
-
             </div>
         </div>
         
-        <!-- Footer -->
-        <div class="bg-gray-100 p-4 text-center text-xs text-gray-500 border-t border-gray-200">
-            Powered by Tesseract.js | Client-side Processing (서버로 이미지가 전송되지 않습니다)
+        <div class="bg-gray-100 p-3 text-center text-xs text-gray-500 border-t border-gray-200">
+            Client-side OCR via Tesseract.js & PDF.js
         </div>
     </div>
 
-    <!-- Notification Toast -->
-    <div id="toast" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-50">
-        <i class="fa-solid fa-check-circle text-green-400 mr-2"></i> <span id="toast-msg">메시지</span>
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl transition-all duration-300 opacity-0 translate-y-10 pointer-events-none z-50 flex items-center gap-2">
+        <i class="fa-solid fa-circle-info text-indigo-400"></i> <span id="toast-msg">알림</span>
     </div>
 
     <script>
-        // DOM Elements
+        // --- DOM Elements ---
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
-        const imagePreview = document.getElementById('image-preview');
         const uploadPlaceholder = document.getElementById('upload-placeholder');
-        const removeImageBtn = document.getElementById('remove-image-btn');
+        const filePreviewList = document.getElementById('file-preview-list');
+        const resetBtn = document.getElementById('reset-btn');
         const convertBtn = document.getElementById('convert-btn');
         const resultText = document.getElementById('result-text');
         const loadingOverlay = document.getElementById('loading-overlay');
-        const statusText = document.getElementById('status-text');
+        const statusMain = document.getElementById('status-main');
+        const statusSub = document.getElementById('status-sub');
         const progressBar = document.getElementById('progress-bar');
         const progressPercent = document.getElementById('progress-percent');
-        const copyBtn = document.getElementById('copy-btn');
         const langBtns = document.querySelectorAll('.lang-btn');
         const toast = document.getElementById('toast');
-        const toastMsg = document.getElementById('toast-msg');
+        const multiBadge = document.getElementById('multi-badge');
 
-        let currentImageFile = null;
+        // --- State ---
+        let selectedFiles = [];
         let currentLang = 'kor+eng';
+        let isMultiMode = false;
 
         // --- Event Listeners ---
 
-        // Language Selection
+        // 1. Language Select
         langBtns.forEach(btn => {
             btn.addEventListener('click', () => {
                 langBtns.forEach(b => {
-                    b.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
-                    b.classList.add('bg-white', 'text-gray-700', 'border-gray-300');
+                    b.classList.remove('bg-indigo-600', 'text-white');
+                    b.classList.add('bg-white', 'text-gray-700');
                 });
-                btn.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
-                btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+                btn.classList.remove('bg-white', 'text-gray-700');
+                btn.classList.add('bg-indigo-600', 'text-white');
                 currentLang = btn.dataset.lang;
             });
         });
 
-        // Drag & Drop
+        // 2. Drag & Drop
         dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
             dropZone.classList.add('drag-active');
         });
-
         dropZone.addEventListener('dragleave', () => {
             dropZone.classList.remove('drag-active');
         });
-
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('drag-active');
-            if (e.dataTransfer.files.length > 0) {
-                handleFile(e.dataTransfer.files[0]);
-            }
+            handleFiles(e.dataTransfer.files);
         });
-
-        // Click Upload
-        dropZone.addEventListener('click', () => {
-            fileInput.click();
+        dropZone.addEventListener('click', (e) => {
+            if(e.target !== resetBtn && !resetBtn.contains(e.target)) fileInput.click();
         });
-
         fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFile(e.target.files[0]);
+            handleFiles(e.target.files);
+        });
+
+        // 3. Reset
+        resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            resetAll();
+        });
+
+        // 4. Secret Code Trigger ("ko11")
+        resultText.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
+            if (val === 'ko11' && !isMultiMode) {
+                isMultiMode = true;
+                fileInput.multiple = true; // 다중 파일 허용
+                multiBadge.classList.remove('hidden');
+                showToast("🔓 다중 파일 업로드 모드가 활성화되었습니다!");
+                resultText.value = ''; // 코드 지우기
+                document.getElementById('upload-msg').innerText = "여러 파일을 드래그하거나 클릭하여 업로드";
             }
         });
 
-        // Remove Image
-        removeImageBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent triggering file input
-            resetImage();
-        });
+        // 5. Convert
+        convertBtn.addEventListener('click', startOCRProcess);
 
-        // Convert Button
-        convertBtn.addEventListener('click', performOCR);
-
-        // Copy Button
-        copyBtn.addEventListener('click', () => {
+        // 6. Copy
+        document.getElementById('copy-btn').addEventListener('click', () => {
             if (!resultText.value) return;
-            resultText.select();
-            document.execCommand('copy');
-            showToast('클립보드에 복사되었습니다.');
+            navigator.clipboard.writeText(resultText.value).then(() => showToast('복사되었습니다.'));
         });
+
 
         // --- Functions ---
 
-        function handleFile(file) {
-            if (!file.type.startsWith('image/')) {
-                showToast('이미지 파일만 업로드 가능합니다.');
-                return;
+        function handleFiles(files) {
+            if (files.length === 0) return;
+
+            // 다중 모드가 아니면 첫 번째 파일만
+            if (!isMultiMode && files.length > 1) {
+                showToast("⚠️ 현재는 단일 파일만 가능합니다. (ko11 입력 시 해제)");
+                selectedFiles = [files[0]];
+            } else if (!isMultiMode) {
+                selectedFiles = [files[0]];
+            } else {
+                // 다중 모드일 경우 기존 파일에 추가 (선택사항, 여기서는 덮어쓰기로 구현)
+                selectedFiles = Array.from(files); 
             }
 
-            currentImageFile = file;
-            const reader = new FileReader();
-            
-            reader.onload = (e) => {
-                imagePreview.src = e.target.result;
-                imagePreview.classList.remove('hidden');
-                removeImageBtn.classList.remove('hidden');
+            renderFilePreview();
+        }
+
+        function renderFilePreview() {
+            if (selectedFiles.length > 0) {
                 uploadPlaceholder.classList.add('hidden');
-            };
-            
-            reader.readAsDataURL(file);
+                filePreviewList.classList.remove('hidden');
+                resetBtn.classList.remove('hidden');
+                
+                filePreviewList.innerHTML = '';
+                selectedFiles.forEach((file, idx) => {
+                    const isPDF = file.type === 'application/pdf';
+                    const iconClass = isPDF ? 'fa-file-pdf text-red-500' : 'fa-file-image text-indigo-500';
+                    
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center justify-between bg-gray-100 p-3 rounded-lg text-sm';
+                    div.innerHTML = `
+                        <div class="flex items-center truncate">
+                            <i class="fa-solid ${iconClass} text-lg mr-3"></i>
+                            <span class="font-medium text-gray-700 truncate max-w-[150px]">${file.name}</span>
+                        </div>
+                        <span class="text-xs text-gray-400">${(file.size / 1024).toFixed(1)} KB</span>
+                    `;
+                    filePreviewList.appendChild(div);
+                });
+            }
         }
 
-        function resetImage() {
-            currentImageFile = null;
+        function resetAll() {
+            selectedFiles = [];
             fileInput.value = '';
-            imagePreview.src = '';
-            imagePreview.classList.add('hidden');
-            removeImageBtn.classList.add('hidden');
+            filePreviewList.innerHTML = '';
+            filePreviewList.classList.add('hidden');
             uploadPlaceholder.classList.remove('hidden');
+            resetBtn.classList.add('hidden');
             resultText.value = '';
-            copyBtn.disabled = true;
         }
 
-        async function performOCR() {
-            if (!currentImageFile) {
-                showToast('먼저 이미지를 업로드해주세요.');
+        // --- Core OCR Logic ---
+
+        async function startOCRProcess() {
+            if (selectedFiles.length === 0) {
+                showToast('변환할 파일을 먼저 업로드해주세요.');
                 return;
             }
 
-            // UI Reset & Loading Start
-            convertBtn.disabled = true;
-            loadingOverlay.classList.remove('hidden');
+            setLoading(true);
             resultText.value = '';
-            copyBtn.disabled = true;
-            updateProgress(0, '초기화 중...');
+            convertBtn.disabled = true;
+
+            const totalFiles = selectedFiles.length;
+            let combinedText = '';
 
             try {
-                // Tesseract Execution
-                const worker = await Tesseract.createWorker({
+                // Tesseract 워커 생성 (DataCloneError 수정된 v5 방식)
+                // 1. 언어(currentLang)를 첫 번째 인자로 바로 전달 (자동 loadLanguage/initialize 수행)
+                // 2. logger를 세 번째 인자(옵션 객체)로 전달하여 안전하게 등록
+                updateProgress(0, "엔진 초기화 중...", "OCR 엔진을 다운로드 및 준비하고 있습니다.");
+                
+                const worker = await Tesseract.createWorker(currentLang, 1, {
                     logger: m => {
-                        if (m.status === 'recognizing text') {
-                            updateProgress(m.progress, '텍스트 분석 중...');
-                        } else if (m.status === 'loading tesseract core') {
-                             updateProgress(0, '코어 로딩 중...');
+                        // 워커 진행률 로그
+                        if (m.status === 'loading tesseract core') {
+                             updateProgress(0, '코어 로딩 중...', '잠시만 기다려주세요');
                         } else if (m.status === 'loading language traineddata') {
-                             updateProgress(0, '언어 데이터 로딩 중... (처음엔 오래 걸릴 수 있습니다)');
-                        } else {
-                            // Other statuses
-                            console.log(m);
+                             updateProgress(0, '언어 데이터 로딩 중...', '처음 실행 시 시간이 소요됩니다');
                         }
                     }
                 });
                 
-                // Load Languages
-                await worker.loadLanguage(currentLang);
-                await worker.initialize(currentLang);
+                // 주의: createWorker(lang)을 사용했으므로 별도의 loadLanguage/initialize 호출 불필요
 
-                // Recognize
-                const { data: { text } } = await worker.recognize(currentImageFile);
-                
-                // Display Result
-                resultText.value = text;
-                copyBtn.disabled = false;
-                
-                await worker.terminate();
+                // 파일 순차 처리
+                for (let i = 0; i < totalFiles; i++) {
+                    const file = selectedFiles[i];
+                    const fileNum = i + 1;
+                    
+                    updateProgress(
+                        (i / totalFiles) * 100, 
+                        `파일 처리 중 (${fileNum}/${totalFiles})`, 
+                        `${file.name} 분석하고 있습니다...`
+                    );
 
-            } catch (error) {
-                console.error(error);
-                resultText.value = "오류가 발생했습니다: " + error.message;
+                    let extractedText = '';
+
+                    if (file.type === 'application/pdf') {
+                        // PDF 처리
+                        extractedText = await processPDF(file, worker);
+                    } else {
+                        // 이미지 처리
+                        const { data: { text } } = await worker.recognize(file);
+                        extractedText = text;
+                    }
+
+                    combinedText += `--- [File: ${file.name}] ---\n${extractedText}\n\n`;
+                    resultText.value = combinedText; // 실시간 업데이트
+                    resultText.scrollTop = resultText.scrollHeight;
+                }
+
+                updateProgress(100, "완료!", "모든 변환이 끝났습니다.");
+                await worker.terminate(); // 워커 종료
+
+            } catch (err) {
+                console.error(err);
+                resultText.value += `\n[오류 발생]: ${err.message}\n(새로고침 후 다시 시도해보세요)`;
+                showToast("오류가 발생했습니다.");
             } finally {
-                loadingOverlay.classList.add('hidden');
+                setLoading(false);
                 convertBtn.disabled = false;
+                document.getElementById('copy-btn').disabled = false;
             }
         }
 
-        function updateProgress(progress, status) {
-            const percent = Math.round(progress * 100);
-            progressBar.style.width = `${percent}%`;
-            progressPercent.innerText = `${percent}%`;
-            statusText.innerText = status;
+        // PDF 처리 함수 (모든 페이지 이미지로 변환 후 OCR)
+        async function processPDF(file, worker) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+            let pdfText = '';
+
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                statusSub.innerText = `PDF 페이지 변환 중 (${pageNum}/${pdf.numPages})...`;
+                
+                const page = await pdf.getPage(pageNum);
+                const viewport = page.getViewport({ scale: 2.0 }); // 화질을 위해 스케일 2배
+                
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+                // 캔버스를 Blob(이미지)으로 변환
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                
+                // Tesseract 돌리기
+                const { data: { text } } = await worker.recognize(blob);
+                pdfText += `[Page ${pageNum}]\n${text}\n`;
+            }
+
+            return pdfText;
         }
 
-        function showToast(message) {
-            toastMsg.innerText = message;
-            toast.classList.remove('opacity-0');
+        function updateProgress(percent, mainText, subText) {
+            progressBar.style.width = `${percent}%`;
+            progressPercent.innerText = `${Math.round(percent)}%`;
+            if(mainText) statusMain.innerText = mainText;
+            if(subText) statusSub.innerText = subText;
+        }
+
+        function setLoading(isLoading) {
+            if (isLoading) {
+                loadingOverlay.classList.remove('hidden');
+            } else {
+                loadingOverlay.classList.add('hidden');
+            }
+        }
+
+        function showToast(msg) {
+            document.getElementById('toast-msg').innerText = msg;
+            toast.classList.remove('translate-y-10', 'opacity-0');
             setTimeout(() => {
-                toast.classList.add('opacity-0');
+                toast.classList.add('translate-y-10', 'opacity-0');
             }, 3000);
         }
     </script>
