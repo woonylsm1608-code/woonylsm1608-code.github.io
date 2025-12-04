@@ -1,390 +1,327 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>OCR + 비밀번호 기반 AI 채팅 (파일 업로드 전용)</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>이미지 텍스트 추출기 (OCR)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Noto Sans KR -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Tesseract.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
-<!-- Tesseract.js -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<!-- Cropper (선택) -->
-<link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- jsPDF (PDF 다운로드) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-<style>
-  :root{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR",Arial;--muted:#666;}
-  body{max-width:1000px;margin:20px auto;padding:16px;}
-  h1{font-size:18px;margin:0 0 8px;}
-  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
-  #drop{flex:1;min-height:110px;border:2px dashed #cfcfcf;border-radius:8px;padding:12px;display:flex;flex-direction:column;justify-content:center;align-items:center;cursor:pointer;background:#fff;}
-  #previewWrap{width:420px;height:320px;border:1px solid #e0e0e0;display:flex;align-items:center;justify-content:center;background:#fafafa;position:relative;}
-  #preview{max-width:100%;max-height:100%;display:block;}
-  #overlayCanvas{position:absolute;left:0;top:0;pointer-events:none;}
-  .controls{display:flex;gap:8px;flex-wrap:wrap;}
-  button,select,input[type="text"],input[type="password"]{padding:6px 8px;border:1px solid #ccc;border-radius:6px;background:#fff;}
-  #status{margin-top:10px;color:var(--muted);min-height:20px;}
-  progress{width:100%;height:14px;display:none;}
-  #result{white-space:pre-wrap;border:1px solid #e6e6e6;padding:10px;min-height:120px;background:#fff;}
-  footer{position:fixed;left:12px;right:12px;bottom:12px;padding:8px;background:rgba(255,255,255,0.95);border:1px solid #e8e8e8;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.05);display:flex;align-items:center;gap:8px;}
-  #pwInput{flex:0 0 220px;}
-  #chatPanel{display:none;border:1px solid #ddd;padding:8px;border-radius:8px;margin-top:12px;background:#fff;}
-  #messages{height:220px;overflow:auto;border:1px solid #eee;padding:8px;background:#fbfbfb;}
-  .msg{margin:6px 0;}
-  .msg.ai{color:#003a8c;}
-  .msg.user{color:#1a1a1a;text-align:right;}
-  small.link{color:var(--muted);display:block;margin-top:6px;}
-</style>
-</head>
-<body>
-
-<h1>확장 OCR (파일 업로드 전용) + 비밀번호 기반 AI 채팅</h1>
-
-<div class="row">
-  <div id="drop" title="클릭 또는 드래그하여 업로드">
-    <div style="font-weight:600">이미지를 드래그하거나 여기를 클릭하여 업로드</div>
-    <div style="font-size:13px;color:var(--muted);margin-top:6px">PNG/JPG 권장. 파일을 직접 선택하면 OCR 준비됩니다.</div>
-    <input id="fileInput" type="file" accept="image/*,application/pdf" style="display:none" />
-    <button id="chooseFileBtn" style="margin-top:8px">파일 선택</button>
-  </div>
-
-  <div id="previewWrap">
-    <img id="preview" alt="preview" />
-    <canvas id="overlayCanvas"></canvas>
-  </div>
-</div>
-
-<div style="margin-top:10px;" class="controls">
-  <button id="startOCR">OCR 실행</button>
-  <button id="cropBtn">크롭 켜기</button>
-  <button id="applyCrop">크롭 적용</button>
-  <button id="clearBoxes">바운딩박스 지우기</button>
-  <select id="lang">
-    <option value="eng+kor">eng+kor</option>
-    <option value="kor">kor</option>
-    <option value="eng">eng</option>
-  </select>
-  <select id="psm">
-    <option value="3">PSM 3 (자동)</option>
-    <option value="6">PSM 6 (단일 블록)</option>
-    <option value="11">PSM 11 (드문 텍스트)</option>
-  </select>
-  <button id="downloadTxt">TXT 다운로드</button>
-  <button id="downloadJson">JSON 다운로드</button>
-  <button id="downloadPdf">PDF 다운로드</button>
-</div>
-
-<div id="status">준비됨.</div>
-<progress id="progress" value="0" max="1"></progress>
-
-<h3>OCR 결과</h3>
-<div id="result">아직 인식된 텍스트가 없습니다.</div>
-
-<!-- Chat panel (비밀번호 입력 후 활성화) -->
-<div id="chatPanel">
-  <div style="display:flex;justify-content:space-between;align-items:center;">
-    <strong>AI 채팅 (활성화됨)</strong>
-    <div style="font-size:12px;color:var(--muted)">OpenAI 연동은 선택사항 — 키를 입력하면 실사용 가능</div>
-  </div>
-  <div id="messages"></div>
-
-  <div style="display:flex;gap:8px;margin-top:8px;">
-    <input id="apiKeyInput" type="password" placeholder="(선택) OpenAI API 키 넣기 (클라이언트 저장)" style="flex:1" />
-    <button id="saveKey">키 저장</button>
-    <button id="clearKey">키 삭제</button>
-  </div>
-
-  <div style="display:flex;gap:8px;margin-top:8px;">
-    <input id="userMsg" type="text" placeholder="메시지를 입력하세요" style="flex:1" />
-    <button id="sendBtn">전송</button>
-  </div>
-
-  <small class="link">※ 브라우저에 직접 키를 넣으면 키가 클라이언트에 저장됩니다. 위험을 이해하고 사용하세요. (권장: 로컬 테스트용)</small>
-</div>
-
-<footer>
-  <input id="pwInput" type="password" placeholder="비밀번호 입력 (사이트 하단)" />
-  <button id="pwBtn">입력</button>
-  <div style="flex:1;color:var(--muted);font-size:13px">비밀번호 입력 시 AI 채팅 패널이 표시됩니다.</div>
-</footer>
-
-<script>
-(async () => {
-  // DOM
-  const drop = document.getElementById('drop');
-  const fileInput = document.getElementById('fileInput');
-  const chooseFileBtn = document.getElementById('chooseFileBtn');
-  const preview = document.getElementById('preview');
-  const overlayCanvas = document.getElementById('overlayCanvas');
-  const startOCR = document.getElementById('startOCR');
-  const statusEl = document.getElementById('status');
-  const progressEl = document.getElementById('progress');
-  const resultEl = document.getElementById('result');
-  const langSel = document.getElementById('lang');
-  const psmSel = document.getElementById('psm');
-  const downloadTxt = document.getElementById('downloadTxt');
-  const downloadJson = document.getElementById('downloadJson');
-  const downloadPdf = document.getElementById('downloadPdf');
-  const cropBtn = document.getElementById('cropBtn');
-  const applyCrop = document.getElementById('applyCrop');
-  const clearBoxes = document.getElementById('clearBoxes');
-
-  // Chat related
-  const pwInput = document.getElementById('pwInput');
-  const pwBtn = document.getElementById('pwBtn');
-  const chatPanel = document.getElementById('chatPanel');
-  const messagesDiv = document.getElementById('messages');
-  const userMsg = document.getElementById('userMsg');
-  const sendBtn = document.getElementById('sendBtn');
-  const apiKeyInput = document.getElementById('apiKeyInput');
-  const saveKeyBtn = document.getElementById('saveKey');
-  const clearKeyBtn = document.getElementById('clearKey');
-
-  // cropper
-  let cropper = null;
-  let cropMode = false;
-
-  // file state
-  let currentFile = null;
-  let lastOcrData = null;
-
-  // Tesseract worker
-  const { createWorker } = Tesseract;
-  const worker = await createWorker({
-    logger: m => {
-      if (m.status && m.status.includes('recogniz')) {
-        progressEl.style.display = 'block';
-        progressEl.value = m.progress || 0;
-        statusEl.textContent = `${m.status} (${Math.round((m.progress||0)*100)}%)`;
-      } else if (m.status) {
-        statusEl.textContent = m.status;
-      }
-    }
-  });
-  await worker.load();
-
-  // utility: preview
-  function setPreviewFromFile(file) {
-    if (!file) return;
-    if (window._previewUrl) URL.revokeObjectURL(window._previewUrl);
-    window._previewUrl = URL.createObjectURL(file);
-    preview.src = window._previewUrl;
-    preview.onload = () => { setupOverlayCanvas(); };
-  }
-
-  function setupOverlayCanvas(){
-    const rect = preview.getBoundingClientRect();
-    overlayCanvas.width = preview.clientWidth;
-    overlayCanvas.height = preview.clientHeight;
-    overlayCanvas.style.width = preview.clientWidth+'px';
-    overlayCanvas.style.height = preview.clientHeight+'px';
-    overlayCanvas.style.left = preview.offsetLeft+'px';
-    overlayCanvas.style.top = preview.offsetTop+'px';
-    const ctx = overlayCanvas.getContext('2d'); ctx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
-  }
-
-  function drawBoxes(words){
-    if (!words || !words.length) return;
-    const ctx = overlayCanvas.getContext('2d'); ctx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
-    const sx = overlayCanvas.width / (preview.naturalWidth || preview.width || 1000);
-    const sy = overlayCanvas.height / (preview.naturalHeight || preview.height || 800);
-    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,0,0,0.9)'; ctx.fillStyle='rgba(255,0,0,0.2)';
-    for (const w of words){
-      const x = w.bbox.x0 * sx, y = w.bbox.y0 * sy;
-      const wW = (w.bbox.x1 - w.bbox.x0) * sx, hH = (w.bbox.y1 - w.bbox.y0) * sy;
-      ctx.strokeRect(x,y,wW,hH);
-      ctx.font='10px sans-serif'; ctx.fillText(w.text||'', x, y>10?y-2:y+10);
-    }
-  }
-
-  // drag & drop + click
-  drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.borderColor='#6aa'; });
-  drop.addEventListener('dragleave', e => { drop.style.borderColor=''; });
-  drop.addEventListener('drop', e => {
-    e.preventDefault(); drop.style.borderColor='';
-    const files = Array.from(e.dataTransfer.files || []);
-    if (files.length) handleFiles(files);
-  });
-  chooseFileBtn.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', e => handleFiles(Array.from(e.target.files || [])));
-
-  function handleFiles(files){
-    const file = files[0];
-    if (!file) return;
-    // basic PDF note
-    if (file.type === 'application/pdf') {
-      statusEl.textContent = 'PDF 업로드: 이 데모는 PDF → 이미지 변환을 자동으로 처리하지 않습니다. PDF를 이미지로 변환해 업로드하세요.';
-    }
-    currentFile = file;
-    setPreviewFromFile(file);
-    statusEl.textContent = `선택됨: ${file.name}`;
-  }
-
-  // recognize using File/Blob directly (avoid fetch(objectURL) — more robust)
-  async function recognizeBlob(blobOrFile){
-    const lang = langSel.value;
-    statusEl.textContent = '언어 모델 로드 및 초기화...';
-    await worker.loadLanguage(lang);
-    await worker.initialize(lang);
-    await worker.setParameters({ tessedit_pageseg_mode: Number(psmSel.value) });
-    statusEl.textContent = '인식 중...';
-    const { data } = await worker.recognize(blobOrFile);
-    lastOcrData = data;
-    resultEl.textContent = data.text || '';
-    if (data.words && data.words.length) drawBoxes(data.words);
-    statusEl.textContent = '인식 완료';
-    progressEl.style.display = 'none';
-    return data;
-  }
-
-  startOCR.addEventListener('click', async () => {
-    if (!currentFile) { statusEl.textContent = '먼저 이미지를 업로드하세요.'; return; }
-    try {
-      await recognizeBlob(currentFile);
-    } catch (err) {
-      console.error(err); statusEl.textContent = 'OCR 오류: ' + (err.message || err);
-    }
-  });
-
-  // cropper
-  cropBtn.addEventListener('click', () => {
-    if (!preview.src) { statusEl.textContent='이미지를 업로드하세요.'; return; }
-    cropMode = !cropMode;
-    if (cropMode) { cropper = new Cropper(preview, { viewMode:1, autoCropArea:0.8 }); statusEl.textContent='크롭 모드 활성화'; }
-    else { if (cropper){ cropper.destroy(); cropper=null;} statusEl.textContent='크롭 모드 비활성화'; setupOverlayCanvas(); }
-  });
-
-  applyCrop.addEventListener('click', () => {
-    if (!cropper) return;
-    const canvas = cropper.getCroppedCanvas();
-    if (!canvas) { statusEl.textContent='크롭 실패'; return; }
-    canvas.toBlob(blob => {
-      if (!blob) { statusEl.textContent='크롭 변환 실패'; return; }
-      currentFile = new File([blob], 'cropped.png', {type:'image/png'});
-      setPreviewFromFile(currentFile);
-      cropper.destroy(); cropper=null; cropMode=false;
-      statusEl.textContent='크롭 적용됨';
-    }, 'image/png');
-  });
-
-  clearBoxes.addEventListener('click', ()=> { const ctx = overlayCanvas.getContext('2d'); ctx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height); });
-
-  // downloads
-  downloadTxt.addEventListener('click', () => {
-    if (!lastOcrData) { statusEl.textContent='먼저 OCR을 실행하세요.'; return; }
-    const blob = new Blob([lastOcrData.text], {type:'text/plain;charset=utf-8'});
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download='ocr_result.txt'; a.click(); URL.revokeObjectURL(a.href);
-  });
-  downloadJson.addEventListener('click', () => {
-    if (!lastOcrData) { statusEl.textContent='먼저 OCR을 실행하세요.'; return; }
-    const blob = new Blob([JSON.stringify(lastOcrData, null, 2)], {type:'application/json'});
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download='ocr_result.json'; a.click(); URL.revokeObjectURL(a.href);
-  });
-  downloadPdf.addEventListener('click', () => {
-    if (!lastOcrData) { statusEl.textContent='먼저 OCR을 실행하세요.'; return; }
-    const { jsPDF } = window.jspdf; const doc = new jsPDF();
-    const lines = doc.splitTextToSize(lastOcrData.text || '', 180);
-    doc.text(lines, 10, 10); doc.save('ocr_result.pdf');
-  });
-
-  // Password -> show chat panel
-  pwBtn.addEventListener('click', () => {
-    const v = pwInput.value || '';
-    if (v === 'rhdudns1!!') {
-      chatPanel.style.display = 'block';
-      statusEl.textContent = 'AI 채팅 패널이 활성화되었습니다.';
-      // load saved key if any
-      const saved = sessionStorage.getItem('OPENAI_KEY');
-      if (saved) apiKeyInput.value = saved;
-      pwInput.value = '';
-    } else {
-      statusEl.textContent = '비밀번호가 틀립니다.';
-    }
-  });
-
-  // API key save/clear
-  saveKeyBtn.addEventListener('click', () => {
-    const k = apiKeyInput.value.trim();
-    if (!k) { statusEl.textContent='키를 입력하세요.'; return; }
-    sessionStorage.setItem('OPENAI_KEY', k);
-    statusEl.textContent = 'API 키가 세션에 저장되었습니다. (브라우저를 닫으면 지워짐)';
-  });
-  clearKeyBtn.addEventListener('click', () => {
-    sessionStorage.removeItem('OPENAI_KEY'); apiKeyInput.value=''; statusEl.textContent='API 키 삭제됨';
-  });
-
-  // simple local fallback AI (rule-based)
-  function localAiReply(userText) {
-    const t = userText.toLowerCase();
-    if (t.includes('안녕')||t.includes('hi')) return '안녕하세요 — 로컬 AI(시험용)입니다. OpenAI 키를 입력하면 더 똑똑한 응답을 사용합니다.';
-    if (t.includes('ocr')) return '현재 OCR 결과를 확인하려면 결과 창을 보세요. 필요하면 결과를 분석해줄게요.';
-    if (t.length < 6) return '질문을 조금 더 길게 해 주세요.';
-    // echo + small transform
-    return '로컬 응답: ' + userText.split('').reverse().join('');
-  }
-
-  // append message
-  function appendMsg(text, who='ai'){
-    const d = document.createElement('div'); d.className = 'msg ' + (who==='ai'?'ai':'user'); d.textContent = text; messagesDiv.appendChild(d);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-  }
-
-  // send handler: if API key present -> call OpenAI Chat Completions; otherwise fallback to localAiReply
-  sendBtn.addEventListener('click', async () => {
-    const txt = userMsg.value.trim(); if (!txt) return;
-    appendMsg(txt,'user'); userMsg.value='';
-    const key = sessionStorage.getItem('OPENAI_KEY') || apiKeyInput.value.trim();
-    if (key) {
-      appendMsg('생성 중...', 'ai');
-      try {
-        // use OpenAI Chat Completions endpoint (user must provide key)
-        const body = {
-          model: 'gpt-4o-mini', // 모델 이름은 필요 시 변경
-          messages: [{role:'user', content: txt}],
-          max_tokens: 600
-        };
-        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + key },
-          body: JSON.stringify(body)
-        });
-        if (!resp.ok) {
-          const txtErr = await resp.text();
-          throw new Error('API 오류: ' + resp.status + ' ' + txtErr);
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f3f4f6;
         }
-        const j = await resp.json();
-        const reply = j?.choices?.[0]?.message?.content ?? '응답을 받지 못했습니다.';
-        // remove the '생성 중...' indicator (last ai msg)
-        const last = messagesDiv.querySelector('.msg.ai:last-child');
-        if (last && last.textContent === '생성 중...') last.remove();
-        appendMsg(reply, 'ai');
-      } catch (err) {
-        // remove spinner
-        const last = messagesDiv.querySelector('.msg.ai:last-child');
-        if (last && last.textContent === '생성 중...') last.remove();
-        appendMsg('API 호출 실패: ' + (err.message || err), 'ai');
-      }
-    } else {
-      // fallback local AI
-      const r = localAiReply(txt);
-      appendMsg(r,'ai');
-    }
-  });
+        .drag-active {
+            border-color: #3b82f6 !important;
+            background-color: #eff6ff !important;
+        }
+        /* Custom scrollbar */
+        textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 4px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
 
-  // allow Enter to send
-  userMsg.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendBtn.click(); } });
+    <!-- Main Container -->
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden">
+        
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white text-center">
+            <h1 class="text-2xl md:text-3xl font-bold mb-2">
+                <i class="fa-solid fa-file-image mr-2"></i>이미지 텍스트 추출기
+            </h1>
+            <p class="text-blue-100 text-sm md:text-base">이미지를 업로드하면 한글과 영어를 자동으로 인식하여 텍스트로 변환합니다.</p>
+        </div>
 
-  // cleanup worker on unload
-  window.addEventListener('beforeunload', async ()=> {
-    try { await worker.terminate(); } catch(e){/*ignore*/ }
-  });
+        <div class="flex flex-col md:flex-row h-full">
+            
+            <!-- Left Side: Input & Preview -->
+            <div class="w-full md:w-1/2 p-6 border-b md:border-b-0 md:border-r border-gray-200">
+                
+                <!-- Upload Area -->
+                <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:border-blue-400 hover:bg-gray-50 h-64 relative group">
+                    <input type="file" id="file-input" class="hidden" accept="image/*">
+                    
+                    <!-- Placeholder Content -->
+                    <div id="upload-placeholder" class="text-center">
+                        <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
+                        </div>
+                        <p class="text-gray-600 font-medium mb-1">이미지를 드래그하거나 클릭하여 업로드</p>
+                        <p class="text-gray-400 text-xs">지원 형식: PNG, JPG, BMP, PBM</p>
+                    </div>
 
-  // initial overlay canvas setup once preview loaded
-  window.addEventListener('resize', () => { if (preview.src) setupOverlayCanvas(); });
+                    <!-- Image Preview -->
+                    <img id="image-preview" class="hidden absolute inset-0 w-full h-full object-contain p-2 bg-gray-50 rounded-xl" alt="Preview">
+                    
+                    <!-- Remove Image Button -->
+                    <button id="remove-image-btn" class="hidden absolute top-2 right-2 bg-red-500 text-white w-8 h-8 rounded-full shadow-md hover:bg-red-600 transition-colors flex items-center justify-center z-10" title="이미지 제거">
+                        <i class="fa-solid fa-times"></i>
+                    </button>
+                </div>
 
-  // Quick detection note: if getUserMedia required later, must be HTTPS/localhost (문서 참조).
-})();
-</script>
+                <!-- Controls -->
+                <div class="mt-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">인식 언어 설정</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button class="lang-btn active bg-blue-600 text-white py-2 rounded-lg text-sm font-medium transition-colors border border-blue-600" data-lang="kor+eng">
+                                한글 + 영어
+                            </button>
+                            <button class="lang-btn bg-white text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors border border-gray-300" data-lang="kor">
+                                한글만
+                            </button>
+                            <button class="lang-btn bg-white text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors border border-gray-300" data-lang="eng">
+                                영어만
+                            </button>
+                        </div>
+                    </div>
+
+                    <button id="convert-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> 텍스트 추출하기
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Side: Result & Progress -->
+            <div class="w-full md:w-1/2 p-6 bg-gray-50 flex flex-col relative">
+                
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold text-gray-800">추출 결과</h2>
+                    <button id="copy-btn" class="text-gray-500 hover:text-blue-600 text-sm font-medium flex items-center gap-1 transition-colors" disabled>
+                        <i class="fa-regular fa-copy"></i> 복사하기
+                    </button>
+                </div>
+
+                <!-- Textarea -->
+                <div class="relative flex-grow">
+                    <textarea id="result-text" class="w-full h-full min-h-[300px] p-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none bg-white text-gray-700 leading-relaxed" placeholder="이미지를 업로드하고 변환 버튼을 누르면 여기에 텍스트가 표시됩니다..."></textarea>
+                    
+                    <!-- Loading Overlay -->
+                    <div id="loading-overlay" class="hidden absolute inset-0 bg-white/90 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center z-10">
+                        <div class="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+                        <p id="status-text" class="text-gray-700 font-medium animate-pulse">엔진 초기화 중...</p>
+                        
+                        <!-- Progress Bar -->
+                        <div class="w-64 h-2 bg-gray-200 rounded-full mt-4 overflow-hidden">
+                            <div id="progress-bar" class="h-full bg-blue-600 rounded-full transition-all duration-300 w-0"></div>
+                        </div>
+                        <p id="progress-percent" class="text-xs text-gray-500 mt-1">0%</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="bg-gray-100 p-4 text-center text-xs text-gray-500 border-t border-gray-200">
+            Powered by Tesseract.js | Client-side Processing (서버로 이미지가 전송되지 않습니다)
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-50">
+        <i class="fa-solid fa-check-circle text-green-400 mr-2"></i> <span id="toast-msg">메시지</span>
+    </div>
+
+    <script>
+        // DOM Elements
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const imagePreview = document.getElementById('image-preview');
+        const uploadPlaceholder = document.getElementById('upload-placeholder');
+        const removeImageBtn = document.getElementById('remove-image-btn');
+        const convertBtn = document.getElementById('convert-btn');
+        const resultText = document.getElementById('result-text');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const statusText = document.getElementById('status-text');
+        const progressBar = document.getElementById('progress-bar');
+        const progressPercent = document.getElementById('progress-percent');
+        const copyBtn = document.getElementById('copy-btn');
+        const langBtns = document.querySelectorAll('.lang-btn');
+        const toast = document.getElementById('toast');
+        const toastMsg = document.getElementById('toast-msg');
+
+        let currentImageFile = null;
+        let currentLang = 'kor+eng';
+
+        // --- Event Listeners ---
+
+        // Language Selection
+        langBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                langBtns.forEach(b => {
+                    b.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+                    b.classList.add('bg-white', 'text-gray-700', 'border-gray-300');
+                });
+                btn.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
+                btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+                currentLang = btn.dataset.lang;
+            });
+        });
+
+        // Drag & Drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-active');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-active');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-active');
+            if (e.dataTransfer.files.length > 0) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        // Click Upload
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // Remove Image
+        removeImageBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent triggering file input
+            resetImage();
+        });
+
+        // Convert Button
+        convertBtn.addEventListener('click', performOCR);
+
+        // Copy Button
+        copyBtn.addEventListener('click', () => {
+            if (!resultText.value) return;
+            resultText.select();
+            document.execCommand('copy');
+            showToast('클립보드에 복사되었습니다.');
+        });
+
+        // --- Functions ---
+
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showToast('이미지 파일만 업로드 가능합니다.');
+                return;
+            }
+
+            currentImageFile = file;
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                imagePreview.src = e.target.result;
+                imagePreview.classList.remove('hidden');
+                removeImageBtn.classList.remove('hidden');
+                uploadPlaceholder.classList.add('hidden');
+            };
+            
+            reader.readAsDataURL(file);
+        }
+
+        function resetImage() {
+            currentImageFile = null;
+            fileInput.value = '';
+            imagePreview.src = '';
+            imagePreview.classList.add('hidden');
+            removeImageBtn.classList.add('hidden');
+            uploadPlaceholder.classList.remove('hidden');
+            resultText.value = '';
+            copyBtn.disabled = true;
+        }
+
+        async function performOCR() {
+            if (!currentImageFile) {
+                showToast('먼저 이미지를 업로드해주세요.');
+                return;
+            }
+
+            // UI Reset & Loading Start
+            convertBtn.disabled = true;
+            loadingOverlay.classList.remove('hidden');
+            resultText.value = '';
+            copyBtn.disabled = true;
+            updateProgress(0, '초기화 중...');
+
+            try {
+                // Tesseract Execution
+                const worker = await Tesseract.createWorker({
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            updateProgress(m.progress, '텍스트 분석 중...');
+                        } else if (m.status === 'loading tesseract core') {
+                             updateProgress(0, '코어 로딩 중...');
+                        } else if (m.status === 'loading language traineddata') {
+                             updateProgress(0, '언어 데이터 로딩 중... (처음엔 오래 걸릴 수 있습니다)');
+                        } else {
+                            // Other statuses
+                            console.log(m);
+                        }
+                    }
+                });
+                
+                // Load Languages
+                await worker.loadLanguage(currentLang);
+                await worker.initialize(currentLang);
+
+                // Recognize
+                const { data: { text } } = await worker.recognize(currentImageFile);
+                
+                // Display Result
+                resultText.value = text;
+                copyBtn.disabled = false;
+                
+                await worker.terminate();
+
+            } catch (error) {
+                console.error(error);
+                resultText.value = "오류가 발생했습니다: " + error.message;
+            } finally {
+                loadingOverlay.classList.add('hidden');
+                convertBtn.disabled = false;
+            }
+        }
+
+        function updateProgress(progress, status) {
+            const percent = Math.round(progress * 100);
+            progressBar.style.width = `${percent}%`;
+            progressPercent.innerText = `${percent}%`;
+            statusText.innerText = status;
+        }
+
+        function showToast(message) {
+            toastMsg.innerText = message;
+            toast.classList.remove('opacity-0');
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+            }, 3000);
+        }
+    </script>
 </body>
 </html>
